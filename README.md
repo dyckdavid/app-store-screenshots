@@ -24,18 +24,15 @@ npm run build
 npm start
 ```
 
-## Deploy on Vercel
+## Pipeline (Origin → GitHub → Vercel)
 
-1. Push this repo to GitHub / Origin.
-2. Import the project in [Vercel](https://vercel.com/new).
-3. Deploy with defaults — **no environment variables** are required.
+One path. Do not create a second Vercel project.
 
-Or from the CLI:
+1. **Origin (source of truth):** [cursor.com/codebase/david-dyck/app-store-screenshots](https://cursor.com/codebase/david-dyck/app-store-screenshots) — cloud agents edit here first when using the Origin workflow.
+2. **Public GitHub (mirror):** [github.com/dyckdavid/app-store-screenshots](https://github.com/dyckdavid/app-store-screenshots) — keep `main` in sync with Origin (push/mirror after Origin changes).
+3. **Vercel (auto-deploy):** project linked to that GitHub repo on team `computerjunges`. Production: [app-store-screenshots-computerjunges.vercel.app](https://app-store-screenshots-computerjunges.vercel.app) — every push to GitHub `main` triggers a production build.
 
-```bash
-npx vercel
-```
-
+No environment variables are required. Local CLI deploys (`npx vercel`) are optional and should target the same existing project only.
 ## How to use
 
 1. Drop or pick one or more screenshots (PNG, JPEG, WebP).
