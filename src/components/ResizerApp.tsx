@@ -45,7 +45,7 @@ export default function ResizerApp() {
   const [sources, setSources] = useState<SourceImage[]>([]);
   const [platforms, setPlatforms] =
     useState<PlatformId[]>(DEFAULT_PLATFORMS);
-  const [mode, setMode] = useState<FitMode>("contain");
+  const [mode, setMode] = useState<FitMode>("cover");
   const [background, setBackground] =
     useState<Background>(DEFAULT_BACKGROUND);
   const [frames, setFrames] = useState(true);

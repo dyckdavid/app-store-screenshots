@@ -113,34 +113,38 @@ export async function composeScreenshot(
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
 
-  fillBackground(ctx, size.width, size.height, opts.background);
-
   if (opts.frames) {
     if (size.platform === "watch") {
+      fillBackground(ctx, size.width, size.height, opts.background);
       drawWatchProceduralFrame(
         ctx,
         source,
         size.width,
         size.height,
         size.orientation,
-        opts.mode,
+        "cover",
       );
     } else {
       const asset = await loadFrameAsset(size);
       if (asset) {
+        // Correct framed pipeline: cover-fill the screen rect, composite into
+        // the bezel on the background, then resize that composition to ASC.
         drawPngFrame(
           ctx,
           source,
           asset,
           size.width,
           size.height,
-          opts.mode,
+          "cover",
+          (c, w, h) => fillBackground(c, w, h, opts.background),
         );
       } else {
+        fillBackground(ctx, size.width, size.height, opts.background);
         drawPlain(ctx, source, size.width, size.height, opts.mode);
       }
     }
   } else {
+    fillBackground(ctx, size.width, size.height, opts.background);
     drawPlain(ctx, source, size.width, size.height, opts.mode);
   }
 

@@ -99,27 +99,29 @@ export default function ResizerPanelBottom({
             Resize mode
           </h2>
           <p className="mt-1 text-[15px] text-[#6e6e73]">
-            How the screenshot fills{" "}
-            {frames ? "the device screen" : "the canvas"}. Outputs always match
-            Apple’s exact pixel sizes.
+            {frames
+              ? "Device frames cover-fill the screen, composite onto your background, then resize to Apple’s exact pixel sizes. Mode below applies when frames are off (and to Watch)."
+              : "How the screenshot fills the canvas. Outputs always match Apple’s exact pixel sizes."}
           </p>
         </div>
         <div
           role="group"
           aria-label="Resize mode"
-          className="inline-flex rounded-xl bg-[#f5f5f7] p-1"
+          className={`inline-flex rounded-xl bg-[#f5f5f7] p-1 ${
+            frames ? "opacity-70" : ""
+          }`}
         >
           {(
             [
               {
                 id: "contain" as const,
                 label: "Contain",
-                hint: frames ? "Fit inside screen" : "Fit inside, letterbox",
+                hint: "Fit inside, letterbox",
               },
               {
                 id: "cover" as const,
                 label: "Cover",
-                hint: frames ? "Fill screen, crop" : "Fill & crop center",
+                hint: "Fill & crop center",
               },
             ] as const
           ).map((item) => (

@@ -286,35 +286,35 @@ export function drawImageInRect(
   ctx.drawImage(image, dx, dy, dw, dh);
 }
 
-export function drawPngFrame(
-  ctx: CanvasRenderingContext2D,
+/**
+ * Build the device layer at native frame resolution:
+ * screenshot is scaled into the screen rect, masked, then the bezel is overlaid.
+ */
+export function composeDeviceLayer(
   source: ImageBitmap,
   asset: LoadedFrameAsset,
-  canvasW: number,
-  canvasH: number,
   mode: "contain" | "cover",
-): void {
+): HTMLCanvasElement {
   const { frame, mask, template } = asset;
   const fw = template.frameSize.width;
   const fh = template.frameSize.height;
   const screen = template.screen;
-  const scale = Math.min((0.9 * canvasW) / fw, (0.9 * canvasH) / fh);
-  const dw = fw * scale;
-  const dh = fh * scale;
 
   const off = document.createElement("canvas");
   off.width = fw;
   off.height = fh;
   const offCtx = off.getContext("2d");
   if (!offCtx) throw new Error("Canvas 2D not available");
+  offCtx.imageSmoothingEnabled = true;
+  offCtx.imageSmoothingQuality = "high";
 
-  offCtx.save();
   if (mask) {
     drawImageInRect(offCtx, source, screen, mode);
     offCtx.globalCompositeOperation = "destination-in";
     offCtx.drawImage(mask, 0, 0, fw, fh);
     offCtx.globalCompositeOperation = "source-over";
   } else {
+    offCtx.save();
     offCtx.beginPath();
     const corner = 0.02 * Math.min(screen.width, screen.height);
     roundedRectPath(
@@ -327,10 +327,82 @@ export function drawPngFrame(
     );
     offCtx.clip();
     drawImageInRect(offCtx, source, screen, mode);
+    offCtx.restore();
   }
-  offCtx.restore();
   offCtx.drawImage(frame, 0, 0, fw, fh);
-  ctx.drawImage(off, (canvasW - dw) / 2, (canvasH - dh) / 2, dw, dh);
+  return off;
+}
+
+/** How much of the ASC canvas the device frame should occupy (uniform fit). */
+export const FRAME_CANVAS_FILL = 0.9;
+
+/**
+ * Composite a framed screenshot onto a background, then resize that full
+ * composition to the ASC export size.
+ *
+ * Pipeline:
+ * 1. Scale the source into the device screen rect (cover/contain)
+ * 2. Composite device + background into one composition canvas
+ * 3. Resize the composition to exact ASC width × height
+ */
+export function drawPngFrame(
+  ctx: CanvasRenderingContext2D,
+  source: ImageBitmap,
+  asset: LoadedFrameAsset,
+  canvasW: number,
+  canvasH: number,
+  mode: "contain" | "cover",
+  fillBackgroundFn?: (
+    c: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+  ) => void,
+): void {
+  const device = composeDeviceLayer(source, asset, mode);
+  const fw = device.width;
+  const fh = device.height;
+
+  // Composition matches ASC aspect so the final resize is a uniform scale.
+  const ascAspect = canvasW / canvasH;
+  let compW = fw / FRAME_CANVAS_FILL;
+  let compH = fh / FRAME_CANVAS_FILL;
+  if (compW / compH < ascAspect) {
+    compW = compH * ascAspect;
+  } else if (compW / compH > ascAspect) {
+    compH = compW / ascAspect;
+  }
+
+  const scale = Math.min(
+    (FRAME_CANVAS_FILL * compW) / fw,
+    (FRAME_CANVAS_FILL * compH) / fh,
+  );
+  const dw = fw * scale;
+  const dh = fh * scale;
+
+  const comp = document.createElement("canvas");
+  comp.width = Math.max(1, Math.round(compW));
+  comp.height = Math.max(1, Math.round(compH));
+  const cctx = comp.getContext("2d");
+  if (!cctx) throw new Error("Canvas 2D not available");
+  cctx.imageSmoothingEnabled = true;
+  cctx.imageSmoothingQuality = "high";
+
+  if (fillBackgroundFn) {
+    fillBackgroundFn(cctx, comp.width, comp.height);
+  } else {
+    cctx.fillStyle = "#000000";
+    cctx.fillRect(0, 0, comp.width, comp.height);
+  }
+  cctx.drawImage(
+    device,
+    (comp.width - dw) / 2,
+    (comp.height - dh) / 2,
+    dw,
+    dh,
+  );
+
+  // Resize full composition to ASC export size.
+  ctx.drawImage(comp, 0, 0, canvasW, canvasH);
 }
 
 export function drawWatchProceduralFrame(
