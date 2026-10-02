@@ -1,0 +1,34 @@
+# Third-party device frame assets
+
+This project vendors transparent PNG device bezels and screen masks for
+App Store marketing-style screenshot composition. Exports remain exact
+App Store Connect pixel sizes.
+
+## Sources
+
+### 1. jonnyjackson26/device-frames-media
+- Repo: https://github.com/jonnyjackson26/device-frames-media
+- Used for: iPhone 16 Pro Max (Black Titanium), iPad Pro 13" M4/M5,
+  iPad Pro 11" M4/M5 (portrait + landscape Space Black)
+- Assets: `frame.png`, `mask.png`, `template.json` (screen rectangle)
+- Vendored under: `public/frames/iphone/`, `public/frames/ipad-13/`,
+  `public/frames/ipad-11/`
+- License: No SPDX license file was published on the upstream repo at the
+  time of vendoring. Assets are included as a community device-template
+  dataset cited by this project; see the upstream README for contribution
+  and usage context. If upstream licensing changes, prefer replacing these
+  assets.
+
+### 2. bunlongheng/frames (MIT)
+- Repo: https://github.com/bunlongheng/frames
+- License: MIT (Copyright (c) 2026 Bunlong Heng) — see upstream LICENSE
+- Used for: MacBook Air Space Gray bezel (`macbook.png`) + screen geometry
+  from `offsets.json`
+- Vendored under: `public/frames/mac/`
+
+### 3. Apple Watch
+- No suitable open transparent PNG Watch bezel was available in the
+  preferred sources above (device-frames-media, bunlongheng/frames).
+- Watch exports use a lightweight procedural bezel fallback drawn in
+  canvas (`src/lib/frames.ts`) so the platform remains covered without
+  redistributing Apple product imagery.

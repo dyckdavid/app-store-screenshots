@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    {
+      "source": "/frames/ipad-13/portrait/frame.png",
+      "destination": "https://raw.githubusercontent.com/jonnyjackson26/device-frames-media/main/device-frames-output/Apple%20iPad/iPad%20Pro%2013%20M4%20%26%20M5/Portrait%20-%20Space%20Black/frame.png"
+    },
+    {
+      "source": "/frames/ipad-11/portrait/frame.png",
+      "destination": "https://raw.githubusercontent.com/jonnyjackson26/device-frames-media/main/device-frames-output/Apple%20iPad/iPad%20Pro%2011%20M4%20%26%20M5/Portrait%20-%20Space%20Black/frame.png"
+    },
+    {
+      "source": "/frames/ipad-11/landscape/frame.png",
+      "destination": "https://raw.githubusercontent.com/jonnyjackson26/device-frames-media/main/device-frames-output/Apple%20iPad/iPad%20Pro%2011%20M4%20%26%20M5/Landscape%20-%20Space%20Black/frame.png"
+    }
+  ]
+}

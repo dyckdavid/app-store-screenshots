@@ -1,0 +1,14 @@
+{
+  "source": "https://github.com/bunlongheng/frames (MIT)",
+  "file": "macbook.png",
+  "screen": {
+    "x": 373,
+    "y": 123,
+    "width": 2560,
+    "height": 1600
+  },
+  "frameSize": {
+    "width": 3306,
+    "height": 1897
+  }
+}
