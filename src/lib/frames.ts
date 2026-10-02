@@ -15,6 +15,7 @@ export interface FrameTemplate {
 export interface LoadedFrameAsset {
   key: string;
   frame: ImageBitmap;
+  /** Alpha mask for destination-in (luminance already baked into alpha). */
   mask: ImageBitmap | null;
   template: FrameTemplate;
 }
@@ -186,6 +187,83 @@ function rotateTemplate(template: FrameTemplate): FrameTemplate {
   };
 }
 
+/** Scale screen rect when the loaded PNG size differs from the template. */
+function scaleTemplateToFrame(
+  template: FrameTemplate,
+  frameW: number,
+  frameH: number,
+): FrameTemplate {
+  const { frameSize, screen } = template;
+  if (frameSize.width === frameW && frameSize.height === frameH) {
+    return { frameSize: { width: frameW, height: frameH }, screen: { ...screen } };
+  }
+  const sx = frameW / frameSize.width;
+  const sy = frameH / frameSize.height;
+  return {
+    frameSize: { width: frameW, height: frameH },
+    screen: {
+      x: screen.x * sx,
+      y: screen.y * sy,
+      width: screen.width * sx,
+      height: screen.height * sy,
+    },
+  };
+}
+
+/**
+ * Convert a luminance screen mask to an alpha mask and return its opaque
+ * bounding box (the screen hole). Canvas `destination-in` keys off alpha only.
+ */
+async function prepareMask(
+  mask: ImageBitmap,
+  fallback: ScreenRect,
+): Promise<{ alphaMask: ImageBitmap; screen: ScreenRect }> {
+  const width = mask.width;
+  const height = mask.height;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return { alphaMask: mask, screen: fallback };
+  }
+  ctx.drawImage(mask, 0, 0);
+  const image = ctx.getImageData(0, 0, width, height);
+  const { data } = image;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const luminance = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      data[i] = 255;
+      data[i + 1] = 255;
+      data[i + 2] = 255;
+      data[i + 3] = luminance;
+      if (luminance > 128) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+  const alphaMask = await createImageBitmap(canvas);
+  const screen =
+    maxX < minX || maxY < minY
+      ? fallback
+      : {
+          x: minX,
+          y: minY,
+          width: maxX - minX + 1,
+          height: maxY - minY + 1,
+        };
+  return { alphaMask, screen };
+}
+
 export async function loadFrameAsset(
   size: ScreenshotSize,
 ): Promise<LoadedFrameAsset | null> {
@@ -220,10 +298,13 @@ export async function loadFrameAsset(
       }
       template = rotateTemplate(ref.template);
     }
-    template = {
-      ...template,
-      frameSize: { width: frame.width, height: frame.height },
-    };
+    template = scaleTemplateToFrame(template, frame.width, frame.height);
+    if (mask) {
+      const prepared = await prepareMask(mask, template.screen);
+      if (prepared.alphaMask !== mask) mask.close();
+      mask = prepared.alphaMask;
+      template = { ...template, screen: prepared.screen };
+    }
     const asset: LoadedFrameAsset = { key, frame, mask, template };
     cache.set(key, asset);
     return asset;
@@ -286,6 +367,13 @@ export function drawImageInRect(
   ctx.drawImage(image, dx, dy, dw, dh);
 }
 
+/**
+ * Framed compose (David’s rule):
+ * 1. Cover-fill the screenshot into the device screen hole (never letterbox
+ *    inside the screen — crop overflow instead).
+ * 2. Scale the whole framed device into the ASC canvas using `mode`
+ *    (contain = fit device with background around it; cover = fill canvas).
+ */
 export function drawPngFrame(
   ctx: CanvasRenderingContext2D,
   source: ImageBitmap,
@@ -298,9 +386,6 @@ export function drawPngFrame(
   const fw = template.frameSize.width;
   const fh = template.frameSize.height;
   const screen = template.screen;
-  const scale = Math.min((0.9 * canvasW) / fw, (0.9 * canvasH) / fh);
-  const dw = fw * scale;
-  const dh = fh * scale;
 
   const off = document.createElement("canvas");
   off.width = fw;
@@ -308,9 +393,10 @@ export function drawPngFrame(
   const offCtx = off.getContext("2d");
   if (!offCtx) throw new Error("Canvas 2D not available");
 
+  // Step 1: always cover-fill the screen geometry (no in-screen letterboxing).
   offCtx.save();
   if (mask) {
-    drawImageInRect(offCtx, source, screen, mode);
+    drawImageInRect(offCtx, source, screen, "cover");
     offCtx.globalCompositeOperation = "destination-in";
     offCtx.drawImage(mask, 0, 0, fw, fh);
     offCtx.globalCompositeOperation = "source-over";
@@ -326,10 +412,18 @@ export function drawPngFrame(
       corner,
     );
     offCtx.clip();
-    drawImageInRect(offCtx, source, screen, mode);
+    drawImageInRect(offCtx, source, screen, "cover");
   }
   offCtx.restore();
   offCtx.drawImage(frame, 0, 0, fw, fh);
+
+  // Step 2: place the framed composition onto the ASC canvas.
+  const scale =
+    mode === "contain"
+      ? Math.min(canvasW / fw, canvasH / fh)
+      : Math.max(canvasW / fw, canvasH / fh);
+  const dw = fw * scale;
+  const dh = fh * scale;
   ctx.drawImage(off, (canvasW - dw) / 2, (canvasH - dh) / 2, dw, dh);
 }
 
@@ -343,17 +437,15 @@ export function drawWatchProceduralFrame(
 ): void {
   const aspect =
     orientation === "landscape" ? 1.1627906976744187 : 0.86;
-  let deviceW: number;
-  let deviceH: number;
-  const maxW = 0.78 * canvasW;
-  const maxH = 0.78 * canvasH;
-  if (maxW / maxH > aspect) {
-    deviceH = maxH;
-    deviceW = deviceH * aspect;
-  } else {
-    deviceW = maxW;
-    deviceH = deviceW / aspect;
-  }
+  // Reference device size; then fit into ASC canvas via contain/cover.
+  const refH = 1000;
+  const refW = refH * aspect;
+  const fitScale =
+    mode === "contain"
+      ? Math.min(canvasW / refW, canvasH / refH)
+      : Math.max(canvasW / refW, canvasH / refH);
+  const deviceW = refW * fitScale;
+  const deviceH = refH * fitScale;
   const deviceX = (canvasW - deviceW) / 2;
   const deviceY = (canvasH - deviceH) / 2;
   const inset = 0.09 * Math.min(deviceW, deviceH);
@@ -412,7 +504,8 @@ export function drawWatchProceduralFrame(
     screenRadius,
   );
   ctx.clip();
-  drawImageInRect(ctx, source, screen, mode);
+  // Always cover-fill the watch face (same rule as PNG frames).
+  drawImageInRect(ctx, source, screen, "cover");
   ctx.restore();
 
   // Digital Crown

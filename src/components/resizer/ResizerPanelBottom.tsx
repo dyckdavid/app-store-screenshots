@@ -99,9 +99,9 @@ export default function ResizerPanelBottom({
             Resize mode
           </h2>
           <p className="mt-1 text-[15px] text-[#6e6e73]">
-            How the screenshot fills{" "}
-            {frames ? "the device screen" : "the canvas"}. Outputs always match
-            Apple’s exact pixel sizes.
+            {frames
+              ? "Screenshots always fill the device screen. This chooses how the framed device sits on the ASC canvas."
+              : "How the screenshot fills the canvas. Outputs always match Apple’s exact pixel sizes."}
           </p>
         </div>
         <div
@@ -114,12 +114,16 @@ export default function ResizerPanelBottom({
               {
                 id: "contain" as const,
                 label: "Contain",
-                hint: frames ? "Fit inside screen" : "Fit inside, letterbox",
+                hint: frames
+                  ? "Fit whole device, pad canvas"
+                  : "Fit inside, letterbox",
               },
               {
                 id: "cover" as const,
                 label: "Cover",
-                hint: frames ? "Fill screen, crop" : "Fill & crop center",
+                hint: frames
+                  ? "Fill canvas, may crop bezel"
+                  : "Fill & crop center",
               },
             ] as const
           ).map((item) => (

@@ -4,7 +4,7 @@ A browser tool that resizes screenshots to **App Store Connect** pixel sizes for
 
 Upload PNG/JPEG/WebP images, pick platforms, choose a solid or gradient background, optionally wrap each shot in a **real PNG device bezel**, then download individual PNGs or a ZIP. All composition runs client-side — no accounts, database, or API keys.
 
-Every export is the **exact** ASC width × height. Composition: background → screenshot (masked to the screen) → PNG frame overlay. Apple Watch uses a procedural bezel fallback (no open PNG in preferred sources).
+Every export is the **exact** ASC width × height. With frames on: cover-fill the screenshot into the device screen hole, then scale the framed composition (background + screen + PNG bezel) to the ASC canvas. Apple Watch uses a procedural bezel fallback (no open PNG in preferred sources).
 
 Frame assets live under `public/frames/` — see [NOTICE](./NOTICE) for sources and attribution.
 
