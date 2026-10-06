@@ -28,9 +28,9 @@ npm start
 
 One path. Do not create a second Vercel project.
 
-1. **Origin (source of truth):** [cursor.com/codebase/david-dyck/app-store-screenshots](https://cursor.com/codebase/david-dyck/app-store-screenshots) — cloud agents edit here first when using the Origin workflow.
-2. **Public GitHub (mirror):** [github.com/dyckdavid/app-store-screenshots](https://github.com/dyckdavid/app-store-screenshots) — keep `main` in sync with Origin (push/mirror after Origin changes).
-3. **Vercel (auto-deploy):** project linked to that GitHub repo on team `computerjunges`. Production: [app-store-screenshots-computerjunges.vercel.app](https://app-store-screenshots-computerjunges.vercel.app) — every push to GitHub `main` triggers a production build.
+1. **GitHub (deploy target):** [github.com/dyckdavid/app-store-screenshots](https://github.com/dyckdavid/app-store-screenshots) — `main` is what Vercel builds. This tree is a superset of the former native Origin `main` (commit `a08aafb` plus README pipeline docs).
+2. **Origin (outbound mirror):** [cursor.com/codebase/david-dyck/app-store-screenshots](https://cursor.com/codebase/david-dyck/app-store-screenshots) will be re-created as a mirror of this GitHub repo, then switched to **outbound** so Origin pushes to GitHub. Prefer editing on Origin once that mirror is live; GitHub `main` stays the public remote Vercel watches.
+3. **Vercel (auto-deploy):** project linked to the GitHub repo on team `computerjunges`. Production: [app-store-screenshots-computerjunges.vercel.app](https://app-store-screenshots-computerjunges.vercel.app) — every push to GitHub `main` triggers a production build.
 
 No environment variables are required. Local CLI deploys (`npx vercel`) are optional and should target the same existing project only.
 ## How to use
