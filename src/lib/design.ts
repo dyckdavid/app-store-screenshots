@@ -2,6 +2,7 @@ import type { Background } from "./background";
 import { DEFAULT_BACKGROUND } from "./background";
 import type { FitMode } from "./resize";
 import type { FontWeight } from "./fonts";
+import type { GraphicLayer } from "./graphics";
 
 export type TextAlign = "left" | "center" | "right";
 export type TextPosition = "top" | "bottom";
@@ -31,6 +32,8 @@ export interface DesignState {
   showGuides: boolean;
   /** Snap text inset to 5% steps when adjusting. */
   snapEnabled: boolean;
+  /** Decorative AI / custom graphic layers (drawn above background). */
+  graphics: GraphicLayer[];
 }
 
 export interface LayoutTemplate {
@@ -61,6 +64,7 @@ export const DEFAULT_DESIGN: DesignState = {
   layout: "single",
   showGuides: true,
   snapEnabled: true,
+  graphics: [],
 };
 
 export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
@@ -248,5 +252,6 @@ export function mergeTemplate(
     ...template.design,
     text: { ...current.text, ...template.design.text },
     background: template.design.background ?? current.background,
+    graphics: template.design.graphics ?? current.graphics,
   };
 }

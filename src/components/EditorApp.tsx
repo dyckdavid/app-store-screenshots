@@ -53,6 +53,7 @@ import { downloadBlob, downloadZip } from "@/lib/download";
 import { formatSize } from "@/lib/sizes";
 import LivePreview from "./editor/LivePreview";
 import ComingSoon from "./editor/ComingSoon";
+import AiFeatures from "./editor/AiFeatures";
 
 type Step = "upload" | "design" | "export";
 
@@ -91,6 +92,7 @@ export default function EditorApp() {
   const [dragOver, setDragOver] = useState(false);
   const [presets, setPresets] = useState<SavedPreset[]>(() => loadPresets());
   const [presetName, setPresetName] = useState("");
+  const [analyzeToken, setAnalyzeToken] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const selectedSizes = useMemo(
@@ -175,6 +177,7 @@ export default function EditorApp() {
         return [];
       });
       setStep("design");
+      setAnalyzeToken((n) => n + 1);
     } catch {
       setError("Could not read one or more images. Try a different file.");
     }
@@ -233,10 +236,14 @@ export default function EditorApp() {
             color:
               design.background.kind === "solid"
                 ? design.background.color
-                : "#0a0f14",
+                : design.background.kind === "image"
+                  ? design.background.fallbackColor
+                  : "#0a0f14",
           },
         });
-      } else {
+        return;
+      }
+      if (kind === "gradient") {
         patchDesign({
           background: {
             kind: "gradient",
@@ -254,7 +261,23 @@ export default function EditorApp() {
                 : "vertical",
           },
         });
+        return;
       }
+      patchDesign({
+        background: {
+          kind: "image",
+          imageDataUrl:
+            design.background.kind === "image"
+              ? design.background.imageDataUrl
+              : "",
+          fallbackColor:
+            design.background.kind === "image"
+              ? design.background.fallbackColor
+              : design.background.kind === "solid"
+                ? design.background.color
+                : "#0a0f14",
+        },
+      });
     },
     [design.background, patchDesign],
   );
@@ -862,6 +885,22 @@ export default function EditorApp() {
                 </p>
               </section>
 
+              <AiFeatures
+                source={activeSource}
+                design={design}
+                onPatchDesign={patchDesign}
+                onPatchText={patchText}
+                platforms={platforms}
+                onSetPlatforms={(next) => {
+                  setPlatforms(next);
+                  setResults((prev) => {
+                    revokeResults(prev);
+                    return [];
+                  });
+                }}
+                analyzeToken={analyzeToken}
+              />
+
               <section className="space-y-4 rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface)] p-5">
                 <h2 className="font-[family-name:var(--font-display)] text-xl text-[var(--ink)]">
                   Background
@@ -875,6 +914,7 @@ export default function EditorApp() {
                     [
                       { id: "solid", label: "Solid" },
                       { id: "gradient", label: "Gradient" },
+                      { id: "image", label: "Image" },
                     ] as const
                   ).map((kind) => (
                     <button
@@ -1034,6 +1074,13 @@ export default function EditorApp() {
                       ))}
                     </div>
                   </div>
+                )}
+                {design.background.kind === "image" && (
+                  <ImageBackgroundControls
+                    imageDataUrl={design.background.imageDataUrl}
+                    fallbackColor={design.background.fallbackColor}
+                    onChange={(next) => patchDesign({ background: next })}
+                  />
                 )}
               </section>
 
@@ -1282,7 +1329,8 @@ export default function EditorApp() {
               creative assets specifications
             </a>
             . Search 3:2 exports use the documented maximum (3840×2560).
-            Processing stays on your device.
+            Composition stays on your device; optional AI calls use server-side
+            xAI routes only when <code>XAI_API_KEY</code> is set.
           </footer>
         </div>
 
@@ -1295,6 +1343,49 @@ export default function EditorApp() {
           />
         </aside>
       </div>
+    </div>
+  );
+}
+
+function ImageBackgroundControls({
+  imageDataUrl,
+  fallbackColor,
+  onChange,
+}: {
+  imageDataUrl: string;
+  fallbackColor: string;
+  onChange: (next: Extract<Background, { kind: "image" }>) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      {imageDataUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={imageDataUrl}
+          alt="Generated background"
+          className="h-28 w-full rounded-xl object-cover"
+        />
+      ) : (
+        <p className="text-sm text-[var(--muted)]">
+          No image yet — use AI (xAI Grok) above to generate a background, or
+          stay on solid/gradient.
+        </p>
+      )}
+      <label className="flex items-center gap-3 text-sm">
+        <span className="text-[var(--muted)]">Fallback</span>
+        <input
+          type="color"
+          value={fallbackColor}
+          onChange={(e) =>
+            onChange({
+              kind: "image",
+              imageDataUrl,
+              fallbackColor: e.target.value,
+            })
+          }
+          className="h-10 w-14 cursor-pointer rounded-lg border border-[var(--line)] bg-white p-1"
+        />
+      </label>
     </div>
   );
 }

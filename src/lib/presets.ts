@@ -65,5 +65,6 @@ export function applyPreset(preset: SavedPreset): DesignState {
     ...DEFAULT_DESIGN,
     ...preset.design,
     text: { ...DEFAULT_DESIGN.text, ...preset.design.text },
+    graphics: preset.design.graphics ?? DEFAULT_DESIGN.graphics,
   };
 }

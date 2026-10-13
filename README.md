@@ -2,12 +2,12 @@
 
 Browser tool that designs and exports **App Store Connect** marketing assets for **iPhone**, **iPad**, **Mac**, **Apple Watch**, plus **product page headers**, **search results creatives**, and **dual-iPhone** layouts.
 
-Upload PNG/JPEG/WebP screenshots → design a consistent set (caption, fonts, templates, backgrounds, frames) → export individual PNGs or a ZIP of every selected size. All composition runs client-side.
+Upload PNG/JPEG/WebP screenshots → design a consistent set (caption, fonts, templates, backgrounds, frames) → export individual PNGs or a ZIP of every selected size. Composition runs client-side. Optional **xAI Grok** features (image generation + vision suggestions) call the API only from Next.js route handlers.
 
 ## Workflow
 
-1. **Upload** — drop one or more screenshots; they form a multi-shot set with shared style.
-2. **Design** — caption/headline + subtitle, font (bundled Google + web-safe), size/weight/color/alignment, top/bottom position, layout templates, solid/gradient backgrounds, single or dual-device layouts, live canvas preview with alignment/snap helpers, saveable presets (`localStorage`).
+1. **Upload** — drop one or more screenshots; they form a multi-shot set with shared style. When AI is enabled, the active shot can be analyzed for styling suggestions.
+2. **Design** — caption/headline + subtitle, font (bundled Google + web-safe), size/weight/color/alignment, top/bottom position, layout templates, solid/gradient/**image** backgrounds, placeable decorative graphic layers, single or dual-device layouts, live canvas preview with alignment/snap helpers, saveable presets (`localStorage`), optional AI generate + one-click apply suggestions.
 3. **Export** — select platforms/creative targets, batch-export all screenshots × all selected ASC sizes as opaque PNGs (ZIP).
 
 ## Frame compose rule (do not regress)
@@ -84,7 +84,36 @@ npm start
 1. **GitHub:** [github.com/dyckdavid/app-store-screenshots](https://github.com/dyckdavid/app-store-screenshots) — `main` is what Vercel builds.
 2. **Vercel:** team `computerjunges` — production [app-store-screenshots-computerjunges.vercel.app](https://app-store-screenshots-computerjunges.vercel.app). Pushes to `main` deploy production; PRs get preview deployments.
 
-No environment variables are required.
+### Environment variables
+
+| Variable | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `XAI_API_KEY` | No | _(unset)_ | Server-only xAI API key. If missing, AI UI is disabled with a clear note; upload/design/export work as before. |
+| `XAI_RATE_LIMIT_PER_IP_PER_MINUTE` | No | `5` | Max AI route calls per client IP per minute |
+| `XAI_RATE_LIMIT_PER_IP_PER_DAY` | No | `30` | Max AI route calls per client IP per UTC day |
+| `XAI_RATE_LIMIT_GLOBAL_PER_DAY` | No | `200` | Max AI route calls across all IPs per UTC day |
+| `XAI_MAX_PROMPT_LENGTH` | No | `500` | Max characters for image-generation prompts |
+| `XAI_VISION_MAX_EDGE` | No | `768` | Longest edge (px) for vision payloads (client downscales) |
+| `XAI_VISION_MAX_BASE64_CHARS` | No | `900000` | Server reject threshold for vision base64 payloads |
+
+Copy `.env.example` → `.env.local` for local development. Set `XAI_API_KEY` in the Vercel project for preview/production AI.
+
+### AI models & pricing (xAI)
+
+Chosen as the **cheapest** options available on [docs.x.ai models](https://docs.x.ai/docs/models) / [pricing](https://docs.x.ai/developers/pricing) at implementation time:
+
+| Feature | Model id | Price | Source |
+| --- | --- | --- | --- |
+| Background / graphic generation | `grok-imagine-image` | **$0.02 / image** | [Imagine Pricing](https://docs.x.ai/docs/models) · [model page](https://docs.x.ai/docs/models/grok-imagine-image) |
+| Screenshot vision analysis | `grok-build-0.1` | **$1.00 / 1M input** · **$2.00 / 1M output** tokens (&lt; 200k prompt) | [Text API Pricing](https://docs.x.ai/docs/models) · [model page](https://docs.x.ai/docs/models/grok-build-0.1) (modalities: text, image → text) |
+
+Server routes:
+
+- `GET /api/ai/status` — whether AI is enabled + public model/cap metadata (never returns the key)
+- `POST /api/ai/generate-image` — `{ prompt, purpose: "background" \| "graphic" }` → data URL
+- `POST /api/ai/analyze` — `{ imageDataUrl }` (downscaled JPEG/PNG) → structured suggestions
+
+Rate limits are enforced in-memory per server instance (per-IP minute/day + global day). For multi-instance production, replace with a shared store (Redis/KV).
 
 ## Coming soon
 
