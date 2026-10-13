@@ -20,6 +20,7 @@ import { DEFAULT_DESIGN } from "./design";
 import { drawTextOverlay, drawGuides } from "./text-overlay";
 import { ensureFontsReady } from "./fonts";
 import type { FitMode } from "./geometry";
+import { drawGraphicLayers, loadImageSource } from "./graphics";
 
 export type { FitMode };
 
@@ -170,7 +171,17 @@ export async function composeToCanvas(
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
 
-  fillBackground(ctx, size.width, size.height, background);
+  const bgBitmap =
+    background.kind === "image"
+      ? await loadImageSource(background.imageDataUrl)
+      : null;
+  fillBackground(ctx, size.width, size.height, background, bgBitmap);
+  await drawGraphicLayers(
+    ctx,
+    size.width,
+    size.height,
+    design.graphics ?? [],
+  );
 
   await ensureFontsReady();
 

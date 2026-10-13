@@ -1,6 +1,8 @@
 /** Canvas background options for ASC screenshot exports. */
 
-export type BackgroundKind = "solid" | "gradient";
+import { fittedImageRect } from "./geometry";
+
+export type BackgroundKind = "solid" | "gradient" | "image";
 
 export type GradientDirection =
   | "vertical"
@@ -20,7 +22,18 @@ export interface GradientBackground {
   direction: GradientDirection;
 }
 
-export type Background = SolidBackground | GradientBackground;
+export interface ImageBackground {
+  kind: "image";
+  /** data: URL or blob: URL usable by canvas drawImage */
+  imageDataUrl: string;
+  /** Solid underlay while the bitmap loads / behind transparent edges */
+  fallbackColor: string;
+}
+
+export type Background =
+  | SolidBackground
+  | GradientBackground
+  | ImageBackground;
 
 export const SOLID_PRESETS: { label: string; color: string }[] = [
   { label: "Black", color: "#000000" },
@@ -100,10 +113,41 @@ export function fillBackground(
   width: number,
   height: number,
   background: Background,
+  imageBitmap?: CanvasImageSource | null,
 ): void {
   if (background.kind === "solid") {
     ctx.fillStyle = background.color;
     ctx.fillRect(0, 0, width, height);
+    return;
+  }
+  if (background.kind === "image") {
+    ctx.fillStyle = background.fallbackColor || "#000000";
+    ctx.fillRect(0, 0, width, height);
+    if (imageBitmap) {
+      const iw =
+        "naturalWidth" in imageBitmap &&
+        typeof imageBitmap.naturalWidth === "number" &&
+        imageBitmap.naturalWidth > 0
+          ? imageBitmap.naturalWidth
+          : "width" in imageBitmap && typeof imageBitmap.width === "number"
+            ? imageBitmap.width
+            : width;
+      const ih =
+        "naturalHeight" in imageBitmap &&
+        typeof imageBitmap.naturalHeight === "number" &&
+        imageBitmap.naturalHeight > 0
+          ? imageBitmap.naturalHeight
+          : "height" in imageBitmap && typeof imageBitmap.height === "number"
+            ? imageBitmap.height
+            : height;
+      const dest = fittedImageRect(
+        iw,
+        ih,
+        { x: 0, y: 0, width, height },
+        "cover",
+      );
+      ctx.drawImage(imageBitmap, dest.x, dest.y, dest.width, dest.height);
+    }
     return;
   }
   const [x0, y0, x1, y1] = gradientLine(
@@ -120,6 +164,9 @@ export function fillBackground(
 
 export function cssBackgroundPreview(background: Background): string {
   if (background.kind === "solid") return background.color;
+  if (background.kind === "image") {
+    return `center / cover no-repeat url("${background.imageDataUrl}"), ${background.fallbackColor}`;
+  }
   const deg =
     background.direction === "horizontal"
       ? "90deg"
