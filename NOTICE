@@ -8,11 +8,14 @@ App Store Connect pixel sizes.
 
 ### 1. jonnyjackson26/device-frames-media
 - Repo: https://github.com/jonnyjackson26/device-frames-media
-- Used for: iPhone 16 Pro Max (Black Titanium), iPad Pro 13" M4/M5,
+- Used for: **iPhone 17 Pro Max (Deep Blue)**, iPad Pro 13" M4/M5,
   iPad Pro 11" M4/M5 (portrait + landscape Space Black)
+- Previously: iPhone 16 Pro Max Black Titanium (superseded by 17 Pro Max;
+  screen template geometry remains 1320×2868 within a 1520×3068 frame)
 - Assets: `frame.png`, `mask.png`, `template.json` (screen rectangle)
 - Vendored under: `public/frames/iphone/`, `public/frames/ipad-13/`,
   `public/frames/ipad-11/`
+- Remote fallback / Vercel rewrites point at the Deep Blue 17 Pro Max paths
 - License: No SPDX license file was published on the upstream repo at the
   time of vendoring. Assets are included as a community device-template
   dataset cited by this project; see the upstream README for contribution
@@ -32,3 +35,9 @@ App Store Connect pixel sizes.
 - Watch exports use a lightweight procedural bezel fallback drawn in
   canvas (`src/lib/frames.ts`) so the platform remains covered without
   redistributing Apple product imagery.
+
+### 4. Fonts
+- Google fonts (Outfit, Fraunces, Source Sans 3, JetBrains Mono) are
+  self-hosted via `next/font/google` at build time (no runtime Google
+  requests). Web-safe fonts (Arial, Georgia, Verdana, Trebuchet MS,
+  Courier New, Times New Roman) use the system stack.

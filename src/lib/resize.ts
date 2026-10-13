@@ -9,12 +9,19 @@ import {
 import {
   drawPngFrame,
   drawWatchProceduralFrame,
+  drawDualIphones,
   loadFrameAsset,
   framePrefetchKey,
   drawImageInRect,
+  iphoneFrameProbeSize,
 } from "./frames";
+import type { DesignState, DeviceLayout } from "./design";
+import { DEFAULT_DESIGN } from "./design";
+import { drawTextOverlay, drawGuides } from "./text-overlay";
+import { ensureFontsReady } from "./fonts";
+import type { FitMode } from "./geometry";
 
-export type FitMode = "contain" | "cover";
+export type { FitMode };
 
 export interface SourceImage {
   id: string;
@@ -39,6 +46,11 @@ export interface ComposeOptions {
   background?: Background;
   /** When true, wrap the screenshot in a device bezel (PNG where available). */
   frames?: boolean;
+  design?: DesignState;
+  /** Second source for dual-device layouts / sets. */
+  secondary?: ImageBitmap | null;
+  /** Draw snap/alignment guides (preview only; never in exports). */
+  guides?: boolean;
 }
 
 export async function loadSourceImage(file: File): Promise<SourceImage> {
@@ -83,12 +95,23 @@ function drawPlain(
   height: number,
   mode: FitMode,
 ): void {
-  drawImageInRect(
-    ctx,
-    source,
-    { x: 0, y: 0, width, height },
-    mode,
-  );
+  drawImageInRect(ctx, source, { x: 0, y: 0, width, height }, mode);
+}
+
+function effectiveLayout(
+  size: ScreenshotSize,
+  layout: DeviceLayout,
+): DeviceLayout {
+  if (size.platform === "dual") {
+    return layout === "single" ? "dual-side" : layout;
+  }
+  if (layout !== "single" && (size.platform === "header" || size.platform === "search")) {
+    return layout;
+  }
+  if (layout !== "single" && size.platform === "iphone") {
+    return layout;
+  }
+  return "single";
 }
 
 export async function composeScreenshot(
@@ -96,14 +119,48 @@ export async function composeScreenshot(
   size: ScreenshotSize,
   options: FitMode | ComposeOptions,
 ): Promise<Blob> {
-  const opts: Required<ComposeOptions> =
+  const canvas = await composeToCanvas(source, size, options, false);
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("Canvas 2D not available");
+  return canvasToOpaquePngBlob(ctx, size.width, size.height);
+}
+
+/** Compose onto a canvas for live preview or export. */
+export async function composeToCanvas(
+  source: ImageBitmap,
+  size: ScreenshotSize,
+  options: FitMode | ComposeOptions,
+  forPreview: boolean,
+): Promise<HTMLCanvasElement> {
+  const opts: Required<
+    Omit<ComposeOptions, "secondary" | "design" | "guides">
+  > & {
+    secondary: ImageBitmap | null;
+    design: DesignState;
+    guides: boolean;
+  } =
     typeof options === "string"
-      ? { mode: options, background: DEFAULT_BACKGROUND, frames: false }
+      ? {
+          mode: options,
+          background: DEFAULT_BACKGROUND,
+          frames: false,
+          secondary: null,
+          design: DEFAULT_DESIGN,
+          guides: false,
+        }
       : {
           mode: options.mode,
-          background: options.background ?? DEFAULT_BACKGROUND,
-          frames: options.frames ?? false,
+          background: options.background ?? options.design?.background ?? DEFAULT_BACKGROUND,
+          frames: options.frames ?? options.design?.frames ?? false,
+          secondary: options.secondary ?? null,
+          design: options.design ?? DEFAULT_DESIGN,
+          guides: options.guides ?? false,
         };
+
+  const design = opts.design;
+  const background = design.background ?? opts.background;
+  const frames = design.frames ?? opts.frames;
+  const mode = design.mode ?? opts.mode;
 
   const canvas = document.createElement("canvas");
   canvas.width = size.width;
@@ -113,9 +170,35 @@ export async function composeScreenshot(
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
 
-  fillBackground(ctx, size.width, size.height, opts.background);
+  fillBackground(ctx, size.width, size.height, background);
 
-  if (opts.frames) {
+  await ensureFontsReady();
+
+  const layout = effectiveLayout(size, design.layout);
+  const secondary = opts.secondary ?? source;
+
+  if (layout !== "single" && frames) {
+    const asset =
+      size.platform === "header" || size.platform === "search"
+        ? await loadFrameAsset(iphoneFrameProbeSize())
+        : await loadFrameAsset(
+            size.platform === "dual" || size.platform === "iphone"
+              ? size
+              : iphoneFrameProbeSize(),
+          );
+    if (asset) {
+      drawDualIphones(
+        ctx,
+        { primary: source, secondary },
+        asset,
+        size.width,
+        size.height,
+        layout,
+      );
+    } else {
+      drawPlain(ctx, source, size.width, size.height, mode);
+    }
+  } else if (frames) {
     if (size.platform === "watch") {
       drawWatchProceduralFrame(
         ctx,
@@ -123,28 +206,34 @@ export async function composeScreenshot(
         size.width,
         size.height,
         size.orientation,
-        opts.mode,
+        mode,
       );
+    } else if (size.platform === "header" || size.platform === "search") {
+      const asset = await loadFrameAsset(iphoneFrameProbeSize());
+      if (asset) {
+        drawPngFrame(ctx, source, asset, size.width, size.height, mode);
+      } else {
+        drawPlain(ctx, source, size.width, size.height, mode);
+      }
     } else {
       const asset = await loadFrameAsset(size);
       if (asset) {
-        drawPngFrame(
-          ctx,
-          source,
-          asset,
-          size.width,
-          size.height,
-          opts.mode,
-        );
+        drawPngFrame(ctx, source, asset, size.width, size.height, mode);
       } else {
-        drawPlain(ctx, source, size.width, size.height, opts.mode);
+        drawPlain(ctx, source, size.width, size.height, mode);
       }
     }
   } else {
-    drawPlain(ctx, source, size.width, size.height, opts.mode);
+    drawPlain(ctx, source, size.width, size.height, mode);
   }
 
-  return canvasToOpaquePngBlob(ctx, size.width, size.height);
+  drawTextOverlay(ctx, size.width, size.height, design.text);
+
+  if (forPreview && opts.guides && design.showGuides) {
+    drawGuides(ctx, size.width, size.height, design.text.insetPercent);
+  }
+
+  return canvas;
 }
 
 export interface GenerateAllOptions {
@@ -153,6 +242,7 @@ export interface GenerateAllOptions {
   mode: FitMode;
   background?: Background;
   frames?: boolean;
+  design?: DesignState;
   onProgress?: (done: number, total: number) => void;
 }
 
@@ -165,6 +255,7 @@ export async function generateAll(
     mode,
     background = DEFAULT_BACKGROUND,
     frames = false,
+    design = DEFAULT_DESIGN,
     onProgress,
   } = options;
 
@@ -172,11 +263,15 @@ export async function generateAll(
   let done = 0;
   const results: GeneratedResult[] = [];
 
-  if (frames) {
+  if (frames || design.frames) {
     const unique = new Map<string, ScreenshotSize>();
     for (const size of sizes) {
-      const key = framePrefetchKey(size);
-      if (!unique.has(key)) unique.set(key, size);
+      const probe =
+        size.platform === "header" || size.platform === "search"
+          ? iphoneFrameProbeSize()
+          : size;
+      const key = framePrefetchKey(probe);
+      if (!unique.has(key)) unique.set(key, probe);
     }
     await Promise.all(
       [...unique.values()].map((size) =>
@@ -187,12 +282,17 @@ export async function generateAll(
     );
   }
 
-  for (const source of sources) {
+  for (let i = 0; i < sources.length; i++) {
+    const source = sources[i]!;
+    const secondary = sources[(i + 1) % sources.length]!;
     for (const size of sizes) {
       const blob = await composeScreenshot(source.bitmap, size, {
-        mode,
-        background,
-        frames,
+        mode: design.mode ?? mode,
+        background: design.background ?? background,
+        frames: design.frames ?? frames,
+        design,
+        secondary: secondary.bitmap,
+        guides: false,
       });
       const filename = `${fileStem(size, source.name)}.png`;
       const previewUrl = URL.createObjectURL(blob);

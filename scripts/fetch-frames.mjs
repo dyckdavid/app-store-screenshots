@@ -19,12 +19,12 @@ const BLH =
 const FRAMES = [
   {
     path: "public/frames/iphone/frame.png",
-    url: `${DFM}/Apple%20iPhone/16%20Pro%20Max/Black%20Titanium/frame.png`,
+    url: `${DFM}/Apple%20iPhone/17%20Pro%20Max/Deep%20Blue/frame.png`,
     minBytes: 100000,
   },
   {
     path: "public/frames/iphone/mask.png",
-    url: `${DFM}/Apple%20iPhone/16%20Pro%20Max/Black%20Titanium/mask.png`,
+    url: `${DFM}/Apple%20iPhone/17%20Pro%20Max/Deep%20Blue/mask.png`,
     minBytes: 5000,
   },
   {
