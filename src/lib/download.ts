@@ -12,7 +12,10 @@ export function downloadBlob(blob: Blob, filename: string) {
   saveAs(blob, filename);
 }
 
-export async function downloadZip(results: GeneratedResult[], zipName = "asc-screenshots.zip") {
+export async function downloadZip(
+  results: GeneratedResult[],
+  zipName = "asc-studio-exports.zip",
+) {
   const zip = new JSZip();
 
   for (const result of results) {

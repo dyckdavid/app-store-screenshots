@@ -1,4 +1,10 @@
 import type { Orientation, PlatformId, ScreenshotSize } from "./sizes";
+import type { DeviceLayout } from "./design";
+import {
+  fittedImageRect,
+  framedDevicePlacement,
+  type FitMode,
+} from "./geometry";
 
 export interface ScreenRect {
   x: number;
@@ -77,14 +83,15 @@ const MAC_TEMPLATE: FrameTemplate = {
 
 function resolveFrameRef(size: ScreenshotSize): FrameRef | null {
   const { platform, orientation, id } = size;
-  if (platform === "iphone") {
+  // Dual layouts and creative assets that need a phone use the iPhone bezel.
+  if (platform === "iphone" || platform === "dual") {
     return {
       localDir: "/frames/iphone",
       frameFile: "frame.png",
       hasMask: true,
       rotateDeg: orientation === "landscape" ? 90 : 0,
-      remoteFrame: `${DFM}/Apple%20iPhone/16%20Pro%20Max/Black%20Titanium/frame.png`,
-      remoteMask: `${DFM}/Apple%20iPhone/16%20Pro%20Max/Black%20Titanium/mask.png`,
+      remoteFrame: `${DFM}/Apple%20iPhone/17%20Pro%20Max/Deep%20Blue/frame.png`,
+      remoteMask: `${DFM}/Apple%20iPhone/17%20Pro%20Max/Deep%20Blue/mask.png`,
       template: IPHONE_TEMPLATE,
     };
   }
@@ -352,36 +359,20 @@ export function drawImageInRect(
   ctx: CanvasRenderingContext2D,
   image: ImageBitmap,
   rect: ScreenRect,
-  mode: "contain" | "cover",
+  mode: FitMode,
 ): void {
-  const iw = image.width;
-  const ih = image.height;
-  const scale =
-    mode === "contain"
-      ? Math.min(rect.width / iw, rect.height / ih)
-      : Math.max(rect.width / iw, rect.height / ih);
-  const dw = iw * scale;
-  const dh = ih * scale;
-  const dx = rect.x + (rect.width - dw) / 2;
-  const dy = rect.y + (rect.height - dh) / 2;
-  ctx.drawImage(image, dx, dy, dw, dh);
+  const dest = fittedImageRect(image.width, image.height, rect, mode);
+  ctx.drawImage(image, dest.x, dest.y, dest.width, dest.height);
 }
 
 /**
- * Framed compose (David’s rule):
- * 1. Cover-fill the screenshot into the device screen hole (never letterbox
- *    inside the screen — crop overflow instead).
- * 2. Scale the whole framed device into the ASC canvas using `mode`
- *    (contain = fit device with background around it; cover = fill canvas).
+ * Build an offscreen canvas with the screenshot cover-filled into the device
+ * screen/mask, then the PNG bezel drawn on top. Does NOT scale to ASC size.
  */
-export function drawPngFrame(
-  ctx: CanvasRenderingContext2D,
+export function renderFramedDevice(
   source: ImageBitmap,
   asset: LoadedFrameAsset,
-  canvasW: number,
-  canvasH: number,
-  mode: "contain" | "cover",
-): void {
+): HTMLCanvasElement {
   const { frame, mask, template } = asset;
   const fw = template.frameSize.width;
   const fh = template.frameSize.height;
@@ -416,15 +407,117 @@ export function drawPngFrame(
   }
   offCtx.restore();
   offCtx.drawImage(frame, 0, 0, fw, fh);
+  return off;
+}
 
-  // Step 2: place the framed composition onto the ASC canvas.
-  const scale =
-    mode === "contain"
-      ? Math.min(canvasW / fw, canvasH / fh)
-      : Math.max(canvasW / fw, canvasH / fh);
-  const dw = fw * scale;
-  const dh = fh * scale;
-  ctx.drawImage(off, (canvasW - dw) / 2, (canvasH - dh) / 2, dw, dh);
+/**
+ * Framed compose (David’s rule):
+ * 1. Cover-fill the screenshot into the device screen hole (never letterbox
+ *    inside the screen — crop overflow instead).
+ * 2. Scale the whole framed device into the ASC canvas using `mode`
+ *    (contain = fit device with background around it; cover = fill canvas).
+ */
+export function drawPngFrame(
+  ctx: CanvasRenderingContext2D,
+  source: ImageBitmap,
+  asset: LoadedFrameAsset,
+  canvasW: number,
+  canvasH: number,
+  mode: FitMode,
+): void {
+  const off = renderFramedDevice(source, asset);
+  const fw = off.width;
+  const fh = off.height;
+  const place = framedDevicePlacement(fw, fh, canvasW, canvasH, mode);
+  ctx.drawImage(off, place.x, place.y, place.width, place.height);
+}
+
+export interface DualSources {
+  primary: ImageBitmap;
+  secondary: ImageBitmap;
+}
+
+/**
+ * Draw two framed iPhones onto one ASC canvas.
+ * Variants: side-by-side, overlapping, or angled.
+ */
+export function drawDualIphones(
+  ctx: CanvasRenderingContext2D,
+  sources: DualSources,
+  asset: LoadedFrameAsset,
+  canvasW: number,
+  canvasH: number,
+  layout: Exclude<DeviceLayout, "single">,
+): void {
+  const left = renderFramedDevice(sources.primary, asset);
+  const right = renderFramedDevice(sources.secondary, asset);
+  const portrait = canvasH >= canvasW;
+
+  if (layout === "dual-side") {
+    if (portrait) {
+      const gap = canvasW * 0.04;
+      const targetH = canvasH * 0.72;
+      const scale = targetH / left.height;
+      const dw = left.width * scale;
+      const dh = left.height * scale;
+      const totalW = dw * 2 + gap;
+      const x0 = (canvasW - totalW) / 2;
+      const y = (canvasH - dh) / 2 + canvasH * 0.04;
+      ctx.drawImage(left, x0, y, dw, dh);
+      ctx.drawImage(right, x0 + dw + gap, y, dw, dh);
+    } else {
+      const gap = canvasW * 0.03;
+      const targetH = canvasH * 0.82;
+      const scale = targetH / left.height;
+      const dw = left.width * scale;
+      const dh = left.height * scale;
+      const totalW = dw * 2 + gap;
+      const x0 = (canvasW - totalW) / 2;
+      const y = (canvasH - dh) / 2;
+      ctx.drawImage(left, x0, y, dw, dh);
+      ctx.drawImage(right, x0 + dw + gap, y, dw, dh);
+    }
+    return;
+  }
+
+  if (layout === "dual-overlap") {
+    const targetH = portrait ? canvasH * 0.7 : canvasH * 0.85;
+    const scale = targetH / left.height;
+    const dw = left.width * scale;
+    const dh = left.height * scale;
+    const overlap = dw * 0.38;
+    const totalW = dw * 2 - overlap;
+    const x0 = (canvasW - totalW) / 2;
+    const y = (canvasH - dh) / 2 + (portrait ? canvasH * 0.03 : 0);
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,0.35)";
+    ctx.shadowBlur = dw * 0.06;
+    ctx.shadowOffsetY = dh * 0.02;
+    ctx.drawImage(left, x0, y + dh * 0.04, dw, dh);
+    ctx.drawImage(right, x0 + dw - overlap, y - dh * 0.02, dw, dh);
+    ctx.restore();
+    return;
+  }
+
+  // dual-angled
+  const targetH = portrait ? canvasH * 0.62 : canvasH * 0.78;
+  const scale = targetH / left.height;
+  const dw = left.width * scale;
+  const dh = left.height * scale;
+  const cx = canvasW / 2;
+  const cy = canvasH / 2 + (portrait ? canvasH * 0.04 : 0);
+
+  ctx.save();
+  ctx.translate(cx - dw * 0.28, cy);
+  ctx.rotate((-8 * Math.PI) / 180);
+  ctx.drawImage(left, -dw / 2, -dh / 2, dw, dh);
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(cx + dw * 0.28, cy);
+  ctx.rotate((8 * Math.PI) / 180);
+  ctx.drawImage(right, -dw / 2, -dh / 2, dw, dh);
+  ctx.restore();
 }
 
 export function drawWatchProceduralFrame(
@@ -433,7 +526,7 @@ export function drawWatchProceduralFrame(
   canvasW: number,
   canvasH: number,
   orientation: Orientation,
-  mode: "contain" | "cover",
+  mode: FitMode,
 ): void {
   const aspect =
     orientation === "landscape" ? 1.1627906976744187 : 0.86;
@@ -538,9 +631,25 @@ export function drawWatchProceduralFrame(
 
 /** Prefetch key used when generating many sizes sharing one frame. */
 export function framePrefetchKey(size: ScreenshotSize): string {
-  return `${size.platform}-${size.orientation}-${
+  const platform =
+    size.platform === "dual" || size.platform === "header" || size.platform === "search"
+      ? "iphone"
+      : size.platform;
+  return `${platform}-${size.orientation}-${
     size.id.includes("13") ? "13" : size.id.includes("11") ? "11" : "x"
   }`;
+}
+
+/** Portrait iPhone size used to load a bezel for header/search compositions. */
+export function iphoneFrameProbeSize(): ScreenshotSize {
+  return {
+    id: "iphone-69-portrait",
+    platform: "iphone",
+    displayName: 'iPhone 6.9" Display',
+    width: 1320,
+    height: 2868,
+    orientation: "portrait",
+  };
 }
 
 export type { PlatformId };

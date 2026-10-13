@@ -1,25 +1,37 @@
 /**
- * App Store Connect screenshot specifications.
- * Source: https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/
- * Verified against Apple’s published sizes (portrait + landscape where required).
+ * App Store Connect screenshot + creative asset specifications.
  *
- * For each display class we emit one accepted pixel size (the most common /
- * latest) so outputs stay practical. Mac and Watch use Apple’s accepted list.
+ * Screenshots:
+ * https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/
+ *
+ * Creative assets (product page header + search results):
+ * https://developer.apple.com/help/app-store-connect/reference/app-information/creative-assets-specifications/
+ *
+ * Best practices / context:
+ * https://developer.apple.com/app-store/asset-best-practices/
  */
 
-export type PlatformId = "iphone" | "ipad" | "mac" | "watch";
+export type PlatformId =
+  | "iphone"
+  | "ipad"
+  | "mac"
+  | "watch"
+  | "header"
+  | "search"
+  | "dual";
 
 export type Orientation = "portrait" | "landscape";
 
 export interface PlatformMeta {
   id: PlatformId;
   label: string;
+  group: "device" | "creative" | "layout";
 }
 
 export interface ScreenshotSize {
   id: string;
   platform: PlatformId;
-  /** Display name Apple uses in App Store Connect */
+  /** Display name Apple uses (or our label for creative/dual). */
   displayName: string;
   width: number;
   height: number;
@@ -29,17 +41,21 @@ export interface ScreenshotSize {
 }
 
 export const PLATFORMS: PlatformMeta[] = [
-  { id: "iphone", label: "iPhone" },
-  { id: "ipad", label: "iPad" },
-  { id: "mac", label: "Mac" },
-  { id: "watch", label: "Apple Watch" },
+  { id: "iphone", label: "iPhone", group: "device" },
+  { id: "ipad", label: "iPad", group: "device" },
+  { id: "mac", label: "Mac", group: "device" },
+  { id: "watch", label: "Apple Watch", group: "device" },
+  { id: "header", label: "Header", group: "creative" },
+  { id: "search", label: "Search", group: "creative" },
+  { id: "dual", label: "Dual iPhone", group: "layout" },
 ];
 
 export const DEFAULT_PLATFORMS: PlatformId[] = [
   "iphone",
   "ipad",
-  "mac",
-  "watch",
+  "header",
+  "search",
+  "dual",
 ];
 
 /** Primary ASC sizes used by this tool (one accepted size per display class). */
@@ -52,7 +68,7 @@ export const SCREENSHOT_SIZES: ScreenshotSize[] = [
     width: 1320,
     height: 2868,
     orientation: "portrait",
-    note: "Primary required set for current iPhone apps",
+    note: "Accepted size for iPhone with Dynamic Island (large display)",
   },
   {
     id: "iphone-69-landscape",
@@ -69,7 +85,7 @@ export const SCREENSHOT_SIZES: ScreenshotSize[] = [
     width: 1284,
     height: 2778,
     orientation: "portrait",
-    note: 'Required if 6.9" screenshots are not provided',
+    note: "Required if large Dynamic Island screenshots are not provided",
   },
   {
     id: "iphone-65-landscape",
@@ -229,6 +245,63 @@ export const SCREENSHOT_SIZES: ScreenshotSize[] = [
     height: 390,
     orientation: "portrait",
   },
+  // ——— Product page header (creative assets) ———
+  {
+    id: "header-21-9",
+    platform: "header",
+    displayName: "Product page header (21:9)",
+    width: 3840,
+    height: 1646,
+    orientation: "landscape",
+    note: "Apple creative assets spec — exact 21:9 resolution",
+  },
+  {
+    id: "header-universal-16-9",
+    platform: "header",
+    displayName: "Universal creative (16:9)",
+    width: 5244,
+    height: 2950,
+    orientation: "landscape",
+    note: "Apple lists 16:9 5244×2950 PNG for header/search universal asset",
+  },
+  // ——— Search results (creative assets) ———
+  {
+    id: "search-3-2",
+    platform: "search",
+    displayName: "Search results (3:2)",
+    width: 3840,
+    height: 2560,
+    orientation: "landscape",
+    note: "Apple allows 1920×1280–3840×2560 at 3:2; we export the maximum",
+  },
+  {
+    id: "search-universal-16-9",
+    platform: "search",
+    displayName: "Universal creative (16:9)",
+    width: 5244,
+    height: 2950,
+    orientation: "landscape",
+    note: "Same universal 16:9 size listed for search results",
+  },
+  // ——— Dual iPhone layouts (exported at primary iPhone ASC size) ———
+  {
+    id: "dual-69-portrait",
+    platform: "dual",
+    displayName: 'Dual iPhone · 6.9" portrait',
+    width: 1320,
+    height: 2868,
+    orientation: "portrait",
+    note: "Two framed iPhones composed into one ASC iPhone canvas",
+  },
+  {
+    id: "dual-69-landscape",
+    platform: "dual",
+    displayName: 'Dual iPhone · 6.9" landscape',
+    width: 2868,
+    height: 1320,
+    orientation: "landscape",
+    note: "Two framed iPhones on a landscape ASC canvas",
+  },
 ];
 
 export function formatSize(size: ScreenshotSize): string {
@@ -247,7 +320,10 @@ export function fileStem(size: ScreenshotSize, sourceName: string): string {
     .replace(/\.[^.]+$/, "")
     .replace(/[^\w.-]+/g, "_");
   const orientation =
-    size.platform === "mac" || size.platform === "watch"
+    size.platform === "mac" ||
+    size.platform === "watch" ||
+    size.platform === "header" ||
+    size.platform === "search"
       ? ""
       : `_${size.orientation}`;
   return `${base}_${size.platform}_${size.width}x${size.height}${orientation}`;

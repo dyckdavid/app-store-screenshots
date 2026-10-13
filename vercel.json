@@ -2,11 +2,11 @@
   "rewrites": [
     {
       "source": "/frames/iphone/frame.png",
-      "destination": "https://raw.githubusercontent.com/jonnyjackson26/device-frames-media/main/device-frames-output/Apple%20iPhone/16%20Pro%20Max/Black%20Titanium/frame.png"
+      "destination": "https://raw.githubusercontent.com/jonnyjackson26/device-frames-media/main/device-frames-output/Apple%20iPhone/17%20Pro%20Max/Deep%20Blue/frame.png"
     },
     {
       "source": "/frames/iphone/mask.png",
-      "destination": "https://raw.githubusercontent.com/jonnyjackson26/device-frames-media/main/device-frames-output/Apple%20iPhone/16%20Pro%20Max/Black%20Titanium/mask.png"
+      "destination": "https://raw.githubusercontent.com/jonnyjackson26/device-frames-media/main/device-frames-output/Apple%20iPhone/17%20Pro%20Max/Deep%20Blue/mask.png"
     },
     {
       "source": "/frames/ipad-13/portrait/frame.png",
