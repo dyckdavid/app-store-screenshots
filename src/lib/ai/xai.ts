@@ -140,45 +140,52 @@ export async function analyzeScreenshotImage(options: {
     throw new XaiHttpError(400, "Vision accepts JPEG or PNG only.");
   }
 
-  const instructions =
-    "You analyze App Store screenshot marketing assets. Return ONLY valid JSON matching the schema. No markdown.";
+  // Chat Completions + low detail keeps vision under serverless time budgets
+  // (Responses API + reasoning models can exceed 60s on cold paths).
+  const userText = `Return ONLY JSON (no markdown) for App Store marketing styling. Schema: ${SUGGESTION_SCHEMA_HINT}`;
 
-  const userText = `Analyze this app screenshot and suggest App Store Connect marketing styling. JSON schema: ${SUGGESTION_SCHEMA_HINT}`;
-
-  const res = await fetch(`${XAI_API_BASE}/responses`, {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify({
-      model: XAI_VISION_MODEL,
-      store: false,
-      temperature: 0.4,
-      max_output_tokens: 800,
-      instructions,
-      input: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "input_image",
-              image_url: dataUrl,
-              detail: "low",
-            },
-            {
-              type: "input_text",
-              text: userText,
-            },
-          ],
-        },
-      ],
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 110_000);
+  let res: Response;
+  try {
+    res = await fetch(`${XAI_API_BASE}/chat/completions`, {
+      method: "POST",
+      headers: authHeaders(),
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: XAI_VISION_MODEL,
+        temperature: 0.2,
+        max_tokens: 500,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You analyze App Store screenshots. Reply with a single JSON object only.",
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: { url: dataUrl, detail: "low" },
+              },
+              { type: "text", text: userText },
+            ],
+          },
+        ],
+      }),
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new XaiHttpError(504, "Vision analysis timed out waiting for xAI.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   const payload = (await res.json().catch(() => null)) as {
-    output?: Array<{
-      type?: string;
-      content?: Array<{ type?: string; text?: string }>;
-    }>;
-    output_text?: string;
+    choices?: Array<{ message?: { content?: string | null } }>;
     error?: { message?: string };
   } | null;
 
@@ -189,31 +196,10 @@ export async function analyzeScreenshotImage(options: {
     );
   }
 
-  const text = extractResponseText(payload);
+  const text = payload?.choices?.[0]?.message?.content?.trim() ?? "";
+  if (!text) throw new XaiHttpError(502, "Vision model returned empty text.");
   const parsed = parseSuggestionsJson(text);
   return { suggestions: parsed, model: XAI_VISION_MODEL };
-}
-
-function extractResponseText(
-  payload: {
-    output?: Array<{
-      type?: string;
-      content?: Array<{ type?: string; text?: string }>;
-    }>;
-    output_text?: string;
-  } | null,
-): string {
-  if (payload?.output_text?.trim()) return payload.output_text.trim();
-  const chunks: string[] = [];
-  for (const item of payload?.output ?? []) {
-    for (const part of item.content ?? []) {
-      if (part.type === "output_text" && part.text) chunks.push(part.text);
-      if (part.type === "text" && part.text) chunks.push(part.text);
-    }
-  }
-  const joined = chunks.join("\n").trim();
-  if (!joined) throw new XaiHttpError(502, "Vision model returned empty text.");
-  return joined;
 }
 
 function parseSuggestionsJson(raw: string): ScreenshotAiSuggestions {

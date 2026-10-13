@@ -6,7 +6,8 @@ import {
 import { analyzeScreenshotImage, XaiHttpError } from "@/lib/ai/xai";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+/** Vision calls can be slow; keep under Vercel Fluid Compute limits. */
+export const maxDuration = 120;
 
 export async function POST(request: Request) {
   if (!isAiConfigured()) {
