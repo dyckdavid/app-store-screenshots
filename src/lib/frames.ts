@@ -454,29 +454,18 @@ export function drawDualIphones(
   const portrait = canvasH >= canvasW;
 
   if (layout === "dual-side") {
-    if (portrait) {
-      const gap = canvasW * 0.04;
-      const targetH = canvasH * 0.72;
-      const scale = targetH / left.height;
-      const dw = left.width * scale;
-      const dh = left.height * scale;
-      const totalW = dw * 2 + gap;
-      const x0 = (canvasW - totalW) / 2;
-      const y = (canvasH - dh) / 2 + canvasH * 0.04;
-      ctx.drawImage(left, x0, y, dw, dh);
-      ctx.drawImage(right, x0 + dw + gap, y, dw, dh);
-    } else {
-      const gap = canvasW * 0.03;
-      const targetH = canvasH * 0.82;
-      const scale = targetH / left.height;
-      const dw = left.width * scale;
-      const dh = left.height * scale;
-      const totalW = dw * 2 + gap;
-      const x0 = (canvasW - totalW) / 2;
-      const y = (canvasH - dh) / 2;
-      ctx.drawImage(left, x0, y, dw, dh);
-      ctx.drawImage(right, x0 + dw + gap, y, dw, dh);
-    }
+    const gap = Math.min(canvasW, canvasH) * 0.03;
+    // Fit both devices inside the ASC canvas (width-constrained for portrait).
+    const maxDeviceW = (canvasW - gap) / 2;
+    const maxDeviceH = canvasH * (portrait ? 0.78 : 0.88);
+    const scale = Math.min(maxDeviceW / left.width, maxDeviceH / left.height);
+    const dw = left.width * scale;
+    const dh = left.height * scale;
+    const totalW = dw * 2 + gap;
+    const x0 = (canvasW - totalW) / 2;
+    const y = (canvasH - dh) / 2 + (portrait ? canvasH * 0.04 : 0);
+    ctx.drawImage(left, x0, y, dw, dh);
+    ctx.drawImage(right, x0 + dw + gap, y, dw, dh);
     return;
   }
 
