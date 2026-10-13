@@ -176,16 +176,17 @@ export async function composeToCanvas(
 
   const layout = effectiveLayout(size, design.layout);
   const secondary = opts.secondary ?? source;
+  // Dual platform always composes two devices; other platforms honor layout.
+  const useDual = size.platform === "dual" || layout !== "single";
 
-  if (layout !== "single" && frames) {
-    const asset =
-      size.platform === "header" || size.platform === "search"
-        ? await loadFrameAsset(iphoneFrameProbeSize())
-        : await loadFrameAsset(
-            size.platform === "dual" || size.platform === "iphone"
-              ? size
-              : iphoneFrameProbeSize(),
-          );
+  if (useDual && frames) {
+    const dualLayout: Exclude<DeviceLayout, "single"> =
+      layout === "single" ? "dual-side" : layout;
+    const asset = await loadFrameAsset(
+      size.platform === "dual" || size.platform === "iphone"
+        ? { ...size, platform: "iphone" }
+        : iphoneFrameProbeSize(),
+    );
     if (asset) {
       drawDualIphones(
         ctx,
@@ -193,7 +194,7 @@ export async function composeToCanvas(
         asset,
         size.width,
         size.height,
-        layout,
+        dualLayout,
       );
     } else {
       drawPlain(ctx, source, size.width, size.height, mode);
