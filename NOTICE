@@ -29,14 +29,26 @@ App Store Connect pixel sizes.
   from `offsets.json`
 - Vendored under: `public/frames/mac/`
 
-### 3. Apple Watch
+### 3. bunlongheng/frames — iPhone Duo (foldable) (MIT)
+- Same MIT repo as MacBook frames above
+- Used for: **iPhone Duo closed** (`iphone-duo-closed-portrait.png`),
+  **open portrait**, and **open landscape** bezels
+- Screen holes measured by flood-fill of the transparent interior:
+  closed 1398×2034 @ (88,80) in 1574×2194; open portrait 2007×2853 @
+  (120,120) in 2247×3093; open landscape 2853×2007 @ (120,120) in 3093×2247
+- Vendored under: `public/frames/iphone-duo/{closed,open-portrait,open-landscape}/`
+- Why this source: Hoverify/Screeny Duo PNGs disallow redistribution as an
+  asset pack; jal-co/iphone-duo ships Apple’s GLB (not openly licensed for
+  bezel redistribution). bunlongheng/frames is MIT and already used here.
+
+### 4. Apple Watch
 - No suitable open transparent PNG Watch bezel was available in the
   preferred sources above (device-frames-media, bunlongheng/frames).
 - Watch exports use a lightweight procedural bezel fallback drawn in
   canvas (`src/lib/frames.ts`) so the platform remains covered without
   redistributing Apple product imagery.
 
-### 4. Fonts
+### 5. Fonts
 - Google fonts (Outfit, Fraunces, Source Sans 3, JetBrains Mono) are
   self-hosted via `next/font/google` at build time (no runtime Google
   requests). Web-safe fonts (Arial, Georgia, Verdana, Trebuchet MS,

@@ -11,12 +11,15 @@
     "prebuild": "node scripts/fetch-frames.mjs"
   },
   "dependencies": {
+    "@ai-sdk/gateway": "^4.0.121",
+    "ai": "^7.0.148",
     "fast-png": "^8.0.0",
     "file-saver": "^2.0.5",
     "jszip": "^3.10.2",
     "next": "16.3.8",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

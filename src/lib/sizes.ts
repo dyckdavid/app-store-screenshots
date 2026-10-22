@@ -283,7 +283,7 @@ export const SCREENSHOT_SIZES: ScreenshotSize[] = [
     orientation: "landscape",
     note: "Same universal 16:9 size listed for search results",
   },
-  // ——— Dual iPhone layouts (exported at primary iPhone ASC size) ———
+  // ——— Dual iPhone layouts (first-class across all iPhone ASC sizes) ———
   {
     id: "dual-69-portrait",
     platform: "dual",
@@ -300,7 +300,54 @@ export const SCREENSHOT_SIZES: ScreenshotSize[] = [
     width: 2868,
     height: 1320,
     orientation: "landscape",
-    note: "Two framed iPhones on a landscape ASC canvas",
+  },
+  {
+    id: "dual-65-portrait",
+    platform: "dual",
+    displayName: 'Dual iPhone · 6.5" portrait',
+    width: 1284,
+    height: 2778,
+    orientation: "portrait",
+  },
+  {
+    id: "dual-65-landscape",
+    platform: "dual",
+    displayName: 'Dual iPhone · 6.5" landscape',
+    width: 2778,
+    height: 1284,
+    orientation: "landscape",
+  },
+  {
+    id: "dual-63-portrait",
+    platform: "dual",
+    displayName: 'Dual iPhone · 6.3" portrait',
+    width: 1206,
+    height: 2622,
+    orientation: "portrait",
+  },
+  {
+    id: "dual-63-landscape",
+    platform: "dual",
+    displayName: 'Dual iPhone · 6.3" landscape',
+    width: 2622,
+    height: 1206,
+    orientation: "landscape",
+  },
+  {
+    id: "dual-61-portrait",
+    platform: "dual",
+    displayName: 'Dual iPhone · 6.1" portrait',
+    width: 1170,
+    height: 2532,
+    orientation: "portrait",
+  },
+  {
+    id: "dual-61-landscape",
+    platform: "dual",
+    displayName: 'Dual iPhone · 6.1" landscape',
+    width: 2532,
+    height: 1170,
+    orientation: "landscape",
   },
 ];
 

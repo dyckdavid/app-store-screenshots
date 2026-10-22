@@ -1,36 +1,51 @@
 "use client";
 
-import type { AiStatusResponse, ScreenshotAiSuggestions } from "./types";
+import type {
+  AiStatusResponse,
+  CopyLocale,
+  CopySuggestionsResponse,
+  ReviewScorecard,
+  ScreenshotAiSuggestions,
+} from "./types";
 import type { AiGeneratePurpose } from "./types";
+import type { DeviceLayout } from "@/lib/design";
+
+const DISABLED_STATUS: AiStatusResponse = {
+  enabled: false,
+  provider: "none",
+  gateway: { configured: false, viaApiKey: false, viaOidc: false },
+  xaiDirect: { configured: false },
+  models: {
+    image: {
+      id: "spacexai/grok-imagine-image",
+      priceUsdPerImage: 0.02,
+      source: "",
+    },
+    vision: {
+      id: "spacexai/grok-build-0.1",
+      inputUsdPerMillionTokens: 1,
+      outputUsdPerMillionTokens: 2,
+      source: "",
+    },
+    copy: { id: "spacexai/grok-build-0.1" },
+  },
+  caps: {
+    perIpPerMinute: 5,
+    perIpPerDay: 30,
+    globalPerDay: 200,
+    maxPromptLength: 500,
+    visionMaxEdge: 768,
+  },
+  envVarsNeeded: [
+    "AI_GATEWAY_API_KEY (or OIDC on Vercel)",
+    "XAI_API_KEY (optional direct fallback)",
+  ],
+  note: "Could not load AI status.",
+};
 
 export async function fetchAiStatus(): Promise<AiStatusResponse> {
   const res = await fetch("/api/ai/status", { method: "GET" });
-  if (!res.ok) {
-    return {
-      enabled: false,
-      models: {
-        image: {
-          id: "grok-imagine-image",
-          priceUsdPerImage: 0.02,
-          source: "",
-        },
-        vision: {
-          id: "grok-build-0.1",
-          inputUsdPerMillionTokens: 1,
-          outputUsdPerMillionTokens: 2,
-          source: "",
-        },
-      },
-      caps: {
-        perIpPerMinute: 5,
-        perIpPerDay: 30,
-        globalPerDay: 200,
-        maxPromptLength: 500,
-        visionMaxEdge: 768,
-      },
-      note: "Could not load AI status.",
-    };
-  }
+  if (!res.ok) return { ...DISABLED_STATUS };
   return (await res.json()) as AiStatusResponse;
 }
 
@@ -55,7 +70,7 @@ export async function generateAiImage(options: {
   return {
     dataUrl: data.dataUrl,
     mimeType: data.mimeType || "image/jpeg",
-    model: data.model || "grok-imagine-image",
+    model: data.model || "spacexai/grok-imagine-image",
   };
 }
 
@@ -77,7 +92,84 @@ export async function analyzeScreenshot(options: {
   }
   return {
     suggestions: data.suggestions,
-    model: data.model || "grok-build-0.1",
+    model: data.model || "spacexai/grok-build-0.1",
+  };
+}
+
+export async function generateLocalizedCopy(options: {
+  imageDataUrl?: string;
+  contextHeadline?: string;
+  contextSubtitle?: string;
+  locales: CopyLocale[];
+}): Promise<CopySuggestionsResponse> {
+  const res = await fetch("/api/ai/copy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(options),
+  });
+  const data = (await res.json().catch(() => ({}))) as CopySuggestionsResponse & {
+    error?: string;
+  };
+  if (!res.ok || !data.locales) {
+    throw new Error(data.error || `Copy failed (${res.status})`);
+  }
+  return data;
+}
+
+export async function pickBestLayout(options: {
+  imageDataUrl: string;
+  screenshotCount: number;
+}): Promise<{
+  layout: DeviceLayout;
+  rationale: string;
+  confidence: number;
+  model: string;
+}> {
+  const res = await fetch("/api/ai/layout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(options),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    error?: string;
+    layout?: DeviceLayout;
+    rationale?: string;
+    confidence?: number;
+    model?: string;
+  };
+  if (!res.ok || !data.layout) {
+    throw new Error(data.error || `Layout pick failed (${res.status})`);
+  }
+  return {
+    layout: data.layout,
+    rationale: data.rationale || "",
+    confidence: data.confidence ?? 0.5,
+    model: data.model || "spacexai/grok-build-0.1",
+  };
+}
+
+export async function reviewComposition(options: {
+  imageDataUrl: string;
+  headline?: string;
+  subtitle?: string;
+  layout?: DeviceLayout;
+}): Promise<{ review: ReviewScorecard; model: string }> {
+  const res = await fetch("/api/ai/review", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(options),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    error?: string;
+    review?: ReviewScorecard;
+    model?: string;
+  };
+  if (!res.ok || !data.review) {
+    throw new Error(data.error || `Review failed (${res.status})`);
+  }
+  return {
+    review: data.review,
+    model: data.model || "spacexai/grok-build-0.1",
   };
 }
 

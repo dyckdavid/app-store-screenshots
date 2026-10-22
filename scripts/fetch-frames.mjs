@@ -72,6 +72,22 @@ const FRAMES = [
     url: `${BLH}/macbook.png`,
     minBytes: 100000,
   },
+  // MIT iPhone Duo (foldable) — bunlongheng/frames
+  {
+    path: "public/frames/iphone-duo/closed/frame.png",
+    url: `${BLH}/iphone-duo-closed-portrait.png`,
+    minBytes: 100000,
+  },
+  {
+    path: "public/frames/iphone-duo/open-portrait/frame.png",
+    url: `${BLH}/iphone-duo-open-portrait.png`,
+    minBytes: 100000,
+  },
+  {
+    path: "public/frames/iphone-duo/open-landscape/frame.png",
+    url: `${BLH}/iphone-duo-open-landscape.png`,
+    minBytes: 100000,
+  },
 ];
 
 async function existsAndBig(abs, minBytes) {

@@ -1,5 +1,6 @@
 import type { Orientation, PlatformId, ScreenshotSize } from "./sizes";
 import type { DeviceLayout } from "./design";
+import { isFoldableLayout } from "./design";
 import {
   fittedImageRect,
   framedDevicePlacement,
@@ -80,6 +81,58 @@ const MAC_TEMPLATE: FrameTemplate = {
   screen: { x: 373, y: 123, width: 2560, height: 1600 },
   frameSize: { width: 3306, height: 1897 },
 };
+
+/** MIT iPhone Duo (foldable) from bunlongheng/frames — screen holes flood-filled. */
+const DUO_CLOSED: FrameTemplate = {
+  screen: { x: 88, y: 80, width: 1398, height: 2034 },
+  frameSize: { width: 1574, height: 2194 },
+};
+
+const DUO_OPEN_PORTRAIT: FrameTemplate = {
+  screen: { x: 120, y: 120, width: 2007, height: 2853 },
+  frameSize: { width: 2247, height: 3093 },
+};
+
+const DUO_OPEN_LANDSCAPE: FrameTemplate = {
+  screen: { x: 120, y: 120, width: 2853, height: 2007 },
+  frameSize: { width: 3093, height: 2247 },
+};
+
+export type FoldablePose = "closed" | "open";
+
+function resolveFoldableRef(
+  pose: FoldablePose,
+  orientation: Orientation,
+): FrameRef {
+  if (pose === "closed") {
+    return {
+      localDir: "/frames/iphone-duo/closed",
+      frameFile: "frame.png",
+      hasMask: false,
+      rotateDeg: 0,
+      remoteFrame: `${BGH}/iphone-duo-closed-portrait.png`,
+      template: DUO_CLOSED,
+    };
+  }
+  if (orientation === "landscape") {
+    return {
+      localDir: "/frames/iphone-duo/open-landscape",
+      frameFile: "frame.png",
+      hasMask: false,
+      rotateDeg: 0,
+      remoteFrame: `${BGH}/iphone-duo-open-landscape.png`,
+      template: DUO_OPEN_LANDSCAPE,
+    };
+  }
+  return {
+    localDir: "/frames/iphone-duo/open-portrait",
+    frameFile: "frame.png",
+    hasMask: false,
+    rotateDeg: 0,
+    remoteFrame: `${BGH}/iphone-duo-open-portrait.png`,
+    template: DUO_OPEN_PORTRAIT,
+  };
+}
 
 function resolveFrameRef(size: ScreenshotSize): FrameRef | null {
   const { platform, orientation, id } = size;
@@ -271,12 +324,7 @@ async function prepareMask(
   return { alphaMask, screen };
 }
 
-export async function loadFrameAsset(
-  size: ScreenshotSize,
-): Promise<LoadedFrameAsset | null> {
-  const ref = resolveFrameRef(size);
-  if (!ref) return null;
-
+async function loadFrameFromRef(ref: FrameRef): Promise<LoadedFrameAsset> {
   const key = `${ref.localDir}:${ref.frameFile}:${ref.rotateDeg}`;
   const cached = cache.get(key);
   if (cached) return cached;
@@ -324,6 +372,29 @@ export async function loadFrameAsset(
     cache.delete(key);
     throw err;
   }
+}
+
+export async function loadFrameAsset(
+  size: ScreenshotSize,
+): Promise<LoadedFrameAsset | null> {
+  const ref = resolveFrameRef(size);
+  if (!ref) return null;
+  return loadFrameFromRef(ref);
+}
+
+export async function loadFoldableFrameAsset(
+  pose: FoldablePose,
+  orientation: Orientation,
+): Promise<LoadedFrameAsset> {
+  return loadFrameFromRef(resolveFoldableRef(pose, orientation));
+}
+
+export function foldablePoseFromLayout(
+  layout: DeviceLayout,
+): FoldablePose | null {
+  if (layout === "foldable-closed") return "closed";
+  if (layout === "foldable-open") return "open";
+  return null;
 }
 
 export function roundedRectPath(
@@ -440,6 +511,7 @@ export interface DualSources {
 /**
  * Draw two framed iPhones onto one ASC canvas.
  * Variants: side-by-side, overlapping, or angled.
+ * Works for every iPhone ASC size (6.9" → 6.1", portrait + landscape).
  */
 export function drawDualIphones(
   ctx: CanvasRenderingContext2D,
@@ -447,67 +519,94 @@ export function drawDualIphones(
   asset: LoadedFrameAsset,
   canvasW: number,
   canvasH: number,
-  layout: Exclude<DeviceLayout, "single">,
+  layout: "dual-side" | "dual-overlap" | "dual-angled",
 ): void {
   const left = renderFramedDevice(sources.primary, asset);
   const right = renderFramedDevice(sources.secondary, asset);
   const portrait = canvasH >= canvasW;
 
   if (layout === "dual-side") {
-    const gap = Math.min(canvasW, canvasH) * 0.03;
-    // Fit both devices inside the ASC canvas (width-constrained for portrait).
+    const gap = Math.min(canvasW, canvasH) * (portrait ? 0.028 : 0.035);
     const maxDeviceW = (canvasW - gap) / 2;
-    const maxDeviceH = canvasH * (portrait ? 0.78 : 0.88);
+    const maxDeviceH = canvasH * (portrait ? 0.76 : 0.9);
     const scale = Math.min(maxDeviceW / left.width, maxDeviceH / left.height);
     const dw = left.width * scale;
     const dh = left.height * scale;
     const totalW = dw * 2 + gap;
     const x0 = (canvasW - totalW) / 2;
-    const y = (canvasH - dh) / 2 + (portrait ? canvasH * 0.04 : 0);
+    const y = (canvasH - dh) / 2 + (portrait ? canvasH * 0.045 : 0);
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,0.22)";
+    ctx.shadowBlur = dw * 0.04;
+    ctx.shadowOffsetY = dh * 0.015;
     ctx.drawImage(left, x0, y, dw, dh);
     ctx.drawImage(right, x0 + dw + gap, y, dw, dh);
-    return;
-  }
-
-  if (layout === "dual-overlap") {
-    const targetH = portrait ? canvasH * 0.7 : canvasH * 0.85;
-    const scale = targetH / left.height;
-    const dw = left.width * scale;
-    const dh = left.height * scale;
-    const overlap = dw * 0.38;
-    const totalW = dw * 2 - overlap;
-    const x0 = (canvasW - totalW) / 2;
-    const y = (canvasH - dh) / 2 + (portrait ? canvasH * 0.03 : 0);
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.35)";
-    ctx.shadowBlur = dw * 0.06;
-    ctx.shadowOffsetY = dh * 0.02;
-    ctx.drawImage(left, x0, y + dh * 0.04, dw, dh);
-    ctx.drawImage(right, x0 + dw - overlap, y - dh * 0.02, dw, dh);
     ctx.restore();
     return;
   }
 
-  // dual-angled
-  const targetH = portrait ? canvasH * 0.62 : canvasH * 0.78;
+  if (layout === "dual-overlap") {
+    const targetH = portrait ? canvasH * 0.68 : canvasH * 0.86;
+    const scale = targetH / left.height;
+    const dw = left.width * scale;
+    const dh = left.height * scale;
+    const overlap = dw * (portrait ? 0.4 : 0.34);
+    const totalW = dw * 2 - overlap;
+    const x0 = (canvasW - totalW) / 2;
+    const y = (canvasH - dh) / 2 + (portrait ? canvasH * 0.035 : 0);
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,0.38)";
+    ctx.shadowBlur = dw * 0.07;
+    ctx.shadowOffsetY = dh * 0.025;
+    ctx.drawImage(left, x0, y + dh * 0.05, dw, dh);
+    ctx.drawImage(right, x0 + dw - overlap, y - dh * 0.03, dw, dh);
+    ctx.restore();
+    return;
+  }
+
+  // dual-angled (tilted pair)
+  const targetH = portrait ? canvasH * 0.6 : canvasH * 0.8;
   const scale = targetH / left.height;
   const dw = left.width * scale;
   const dh = left.height * scale;
   const cx = canvasW / 2;
-  const cy = canvasH / 2 + (portrait ? canvasH * 0.04 : 0);
+  const cy = canvasH / 2 + (portrait ? canvasH * 0.05 : 0);
+  const spread = portrait ? 0.3 : 0.34;
+  const tilt = portrait ? 9 : 7;
 
   ctx.save();
-  ctx.translate(cx - dw * 0.28, cy);
-  ctx.rotate((-8 * Math.PI) / 180);
+  ctx.shadowColor = "rgba(0,0,0,0.3)";
+  ctx.shadowBlur = dw * 0.05;
+  ctx.translate(cx - dw * spread, cy);
+  ctx.rotate((-tilt * Math.PI) / 180);
   ctx.drawImage(left, -dw / 2, -dh / 2, dw, dh);
   ctx.restore();
 
   ctx.save();
-  ctx.translate(cx + dw * 0.28, cy);
-  ctx.rotate((8 * Math.PI) / 180);
+  ctx.shadowColor = "rgba(0,0,0,0.3)";
+  ctx.shadowBlur = dw * 0.05;
+  ctx.translate(cx + dw * spread, cy);
+  ctx.rotate((tilt * Math.PI) / 180);
   ctx.drawImage(right, -dw / 2, -dh / 2, dw, dh);
   ctx.restore();
 }
+
+/**
+ * Cover-fill into foldable bezel, then scale framed device to ASC canvas.
+ * Same two-step rule as PNG iPhone/iPad frames.
+ */
+export function drawFoldableDevice(
+  ctx: CanvasRenderingContext2D,
+  source: ImageBitmap,
+  asset: LoadedFrameAsset,
+  canvasW: number,
+  canvasH: number,
+  mode: FitMode,
+): void {
+  drawPngFrame(ctx, source, asset, canvasW, canvasH, mode);
+}
+
+export { isFoldableLayout };
 
 export function drawWatchProceduralFrame(
   ctx: CanvasRenderingContext2D,
