@@ -43,6 +43,18 @@
     {
       "source": "/frames/mac/macbook.png",
       "destination": "https://raw.githubusercontent.com/bunlongheng/frames/main/public/assets/frames/macbook.png"
+    },
+    {
+      "source": "/frames/iphone-duo/closed/frame.png",
+      "destination": "https://raw.githubusercontent.com/bunlongheng/frames/main/public/assets/frames/iphone-duo-closed-portrait.png"
+    },
+    {
+      "source": "/frames/iphone-duo/open-portrait/frame.png",
+      "destination": "https://raw.githubusercontent.com/bunlongheng/frames/main/public/assets/frames/iphone-duo-open-portrait.png"
+    },
+    {
+      "source": "/frames/iphone-duo/open-landscape/frame.png",
+      "destination": "https://raw.githubusercontent.com/bunlongheng/frames/main/public/assets/frames/iphone-duo-open-landscape.png"
     }
   ]
 }

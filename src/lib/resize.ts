@@ -10,13 +10,16 @@ import {
   drawPngFrame,
   drawWatchProceduralFrame,
   drawDualIphones,
+  drawFoldableDevice,
   loadFrameAsset,
+  loadFoldableFrameAsset,
+  foldablePoseFromLayout,
   framePrefetchKey,
   drawImageInRect,
   iphoneFrameProbeSize,
 } from "./frames";
 import type { DesignState, DeviceLayout } from "./design";
-import { DEFAULT_DESIGN } from "./design";
+import { DEFAULT_DESIGN, isDualLayout, isFoldableLayout } from "./design";
 import { drawTextOverlay, drawGuides } from "./text-overlay";
 import { ensureFontsReady } from "./fonts";
 import type { FitMode } from "./geometry";
@@ -103,15 +106,21 @@ function effectiveLayout(
   size: ScreenshotSize,
   layout: DeviceLayout,
 ): DeviceLayout {
+  // Dual platform always composes two devices (default side-by-side).
   if (size.platform === "dual") {
-    return layout === "single" ? "dual-side" : layout;
+    if (isFoldableLayout(layout)) return layout;
+    return isDualLayout(layout) ? layout : "dual-side";
   }
-  if (layout !== "single" && (size.platform === "header" || size.platform === "search")) {
+  // Foldable + dual layouts are first-class on every iPhone ASC size.
+  if (size.platform === "iphone") {
     return layout;
   }
-  if (layout !== "single" && size.platform === "iphone") {
+  // Header/search creatives may use dual or foldable compositions.
+  if (size.platform === "header" || size.platform === "search") {
     return layout;
   }
+  // Other platforms stay single-device (foldable still allowed as a special frame).
+  if (isFoldableLayout(layout)) return layout;
   return "single";
 }
 
@@ -187,12 +196,27 @@ export async function composeToCanvas(
 
   const layout = effectiveLayout(size, design.layout);
   const secondary = opts.secondary ?? source;
-  // Dual platform always composes two devices; other platforms honor layout.
-  const useDual = size.platform === "dual" || layout !== "single";
+  const foldablePose = foldablePoseFromLayout(layout);
+  const useDual = isDualLayout(layout) || size.platform === "dual";
 
-  if (useDual && frames) {
-    const dualLayout: Exclude<DeviceLayout, "single"> =
-      layout === "single" ? "dual-side" : layout;
+  if (foldablePose && frames) {
+    const asset = await loadFoldableFrameAsset(
+      foldablePose,
+      size.orientation,
+    );
+    drawFoldableDevice(
+      ctx,
+      source,
+      asset,
+      size.width,
+      size.height,
+      mode,
+    );
+  } else if (useDual && frames) {
+    const dualLayout =
+      layout === "dual-overlap" || layout === "dual-angled"
+        ? layout
+        : ("dual-side" as const);
     const asset = await loadFrameAsset(
       size.platform === "dual" || size.platform === "iphone"
         ? { ...size, platform: "iphone" }
@@ -285,13 +309,17 @@ export async function generateAll(
       const key = framePrefetchKey(probe);
       if (!unique.has(key)) unique.set(key, probe);
     }
-    await Promise.all(
-      [...unique.values()].map((size) =>
-        size.platform === "watch"
-          ? Promise.resolve(null)
-          : loadFrameAsset(size),
-      ),
+    const prefetch: Promise<unknown>[] = [...unique.values()].map((size) =>
+      size.platform === "watch" ? Promise.resolve(null) : loadFrameAsset(size),
     );
+    const pose = foldablePoseFromLayout(design.layout);
+    if (pose) {
+      const orients = new Set(sizes.map((s) => s.orientation));
+      for (const orientation of orients) {
+        prefetch.push(loadFoldableFrameAsset(pose, orientation));
+      }
+    }
+    await Promise.all(prefetch);
   }
 
   for (let i = 0; i < sources.length; i++) {

@@ -10,7 +10,8 @@ export type SuggestedDevice =
   | "watch"
   | "dual"
   | "header"
-  | "search";
+  | "search"
+  | "foldable";
 
 export interface SuggestedSolidBackground {
   kind: "solid";
@@ -44,8 +45,79 @@ export interface ScreenshotAiSuggestions {
   rationale: string;
 }
 
+export type CopyLocale =
+  | "en"
+  | "es"
+  | "de"
+  | "fr"
+  | "pt"
+  | "ja"
+  | "zh-Hans"
+  | "ko";
+
+export interface LocalizedCopy {
+  locale: CopyLocale;
+  localeLabel: string;
+  headline: string;
+  subtitle: string;
+}
+
+export interface CopySuggestionsResponse {
+  locales: LocalizedCopy[];
+  model: string;
+}
+
+export interface ReviewIssue {
+  id: string;
+  severity: "info" | "warn" | "critical";
+  category:
+    | "readability"
+    | "contrast"
+    | "text-size"
+    | "guideline"
+    | "consistency";
+  title: string;
+  detail: string;
+  /** Patch that one-click apply can merge into DesignState / text. */
+  fix?: {
+    text?: Partial<{
+      headline: string;
+      subtitle: string;
+      color: string;
+      headlineSize: number;
+      subtitleSize: number;
+      align: TextAlign;
+      position: TextPosition;
+      insetPercent: number;
+    }>;
+    layout?: DeviceLayout;
+    background?: SuggestedBackground;
+    frames?: boolean;
+  };
+}
+
+export interface ReviewScorecard {
+  overall: number;
+  readability: number;
+  contrast: number;
+  textSize: number;
+  guidelines: number;
+  consistency: number;
+  summary: string;
+  issues: ReviewIssue[];
+}
+
 export interface AiStatusResponse {
   enabled: boolean;
+  provider: "gateway" | "xai-direct" | "none";
+  gateway: {
+    configured: boolean;
+    viaApiKey: boolean;
+    viaOidc: boolean;
+  };
+  xaiDirect: {
+    configured: boolean;
+  };
   models: {
     image: {
       id: string;
@@ -58,6 +130,9 @@ export interface AiStatusResponse {
       outputUsdPerMillionTokens: number;
       source: string;
     };
+    copy: {
+      id: string;
+    };
   };
   caps: {
     perIpPerMinute: number;
@@ -66,5 +141,6 @@ export interface AiStatusResponse {
     maxPromptLength: number;
     visionMaxEdge: number;
   };
+  envVarsNeeded: string[];
   note: string | null;
 }

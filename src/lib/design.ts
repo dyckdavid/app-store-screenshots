@@ -6,7 +6,25 @@ import type { GraphicLayer } from "./graphics";
 
 export type TextAlign = "left" | "center" | "right";
 export type TextPosition = "top" | "bottom";
-export type DeviceLayout = "single" | "dual-side" | "dual-overlap" | "dual-angled";
+export type DeviceLayout =
+  | "single"
+  | "dual-side"
+  | "dual-overlap"
+  | "dual-angled"
+  | "foldable-closed"
+  | "foldable-open";
+
+export function isDualLayout(layout: DeviceLayout): boolean {
+  return (
+    layout === "dual-side" ||
+    layout === "dual-overlap" ||
+    layout === "dual-angled"
+  );
+}
+
+export function isFoldableLayout(layout: DeviceLayout): boolean {
+  return layout === "foldable-closed" || layout === "foldable-open";
+}
 
 export interface TextStyle {
   headline: string;
@@ -189,6 +207,47 @@ export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
         subtitle: "iPhone · App Store",
         position: "top",
         headlineSize: 54,
+      },
+    },
+  },
+  {
+    id: "foldable-open",
+    label: "Foldable open",
+    description: "MIT iPhone Duo open bezel (bunlongheng/frames)",
+    design: {
+      layout: "foldable-open",
+      frames: true,
+      mode: "contain",
+      background: {
+        kind: "gradient",
+        from: "#102a28",
+        to: "#0a0f14",
+        direction: "vertical",
+      },
+      text: {
+        ...DEFAULT_TEXT,
+        headline: "Unfold the next view",
+        subtitle: "iPhone Duo · open",
+        position: "top",
+        headlineSize: 56,
+      },
+    },
+  },
+  {
+    id: "foldable-closed",
+    label: "Foldable closed",
+    description: "MIT iPhone Duo cover/closed bezel",
+    design: {
+      layout: "foldable-closed",
+      frames: true,
+      mode: "contain",
+      background: { kind: "solid", color: "#0c1218" },
+      text: {
+        ...DEFAULT_TEXT,
+        headline: "Pocket-ready",
+        subtitle: "iPhone Duo · closed",
+        position: "bottom",
+        headlineSize: 58,
       },
     },
   },

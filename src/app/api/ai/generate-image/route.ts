@@ -3,7 +3,7 @@ import {
   clientIpFromRequest,
   consumeRateLimit,
 } from "@/lib/ai/rate-limit";
-import { generateImagineImage, XaiHttpError } from "@/lib/ai/xai";
+import { AiServiceError, runGenerateImage } from "@/lib/ai/service";
 import type { AiGeneratePurpose } from "@/lib/ai/types";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     return Response.json(
       {
         error:
-          "AI features are disabled. Set XAI_API_KEY on the server to enable.",
+          "AI features are disabled. Set AI_GATEWAY_API_KEY (or OIDC on Vercel) or XAI_API_KEY.",
       },
       { status: 503 },
     );
@@ -57,13 +57,13 @@ export async function POST(request: Request) {
     body.purpose === "graphic" ? "graphic" : "background";
 
   try {
-    const result = await generateImagineImage({ prompt, purpose });
+    const result = await runGenerateImage({ prompt, purpose });
     return Response.json({
       ...result,
       remaining: limited.remaining,
     });
   } catch (err) {
-    if (err instanceof XaiHttpError) {
+    if (err instanceof AiServiceError) {
       return Response.json({ error: err.message }, { status: err.status });
     }
     return Response.json(

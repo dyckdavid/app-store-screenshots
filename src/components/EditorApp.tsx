@@ -53,9 +53,8 @@ import { downloadBlob, downloadZip } from "@/lib/download";
 import { formatSize } from "@/lib/sizes";
 import LivePreview from "./editor/LivePreview";
 import ComingSoon from "./editor/ComingSoon";
-import AiFeatures from "./editor/AiFeatures";
-
-type Step = "upload" | "design" | "export";
+import ReviewPanel from "./editor/ReviewPanel";
+import { FLOW_STEPS, type FlowStep } from "./editor/flow";
 
 function isAcceptedFile(file: File): boolean {
   const t = file.type.toLowerCase();
@@ -64,21 +63,17 @@ function isAcceptedFile(file: File): boolean {
   return /\.(png|jpe?g|webp)$/i.test(file.name);
 }
 
-const STEPS: { id: Step; label: string; hint: string }[] = [
-  { id: "upload", label: "Upload", hint: "Add screenshots" },
-  { id: "design", label: "Design", hint: "Style the set" },
-  { id: "export", label: "Export", hint: "ASC sizes + ZIP" },
-];
-
-const LAYOUTS: { id: DeviceLayout; label: string }[] = [
-  { id: "single", label: "Single" },
-  { id: "dual-side", label: "Side by side" },
-  { id: "dual-overlap", label: "Overlap" },
-  { id: "dual-angled", label: "Angled" },
+const LAYOUTS: { id: DeviceLayout; label: string; hint: string }[] = [
+  { id: "single", label: "Single", hint: "One device" },
+  { id: "dual-side", label: "Side by side", hint: "Two phones" },
+  { id: "dual-overlap", label: "Overlap", hint: "Stacked depth" },
+  { id: "dual-angled", label: "Tilted", hint: "Angled pair" },
+  { id: "foldable-open", label: "Foldable open", hint: "MIT Duo open" },
+  { id: "foldable-closed", label: "Foldable closed", hint: "MIT Duo cover" },
 ];
 
 export default function EditorApp() {
-  const [step, setStep] = useState<Step>("upload");
+  const [step, setStep] = useState<FlowStep>("upload");
   const [sources, setSources] = useState<SourceImage[]>([]);
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
   const [platforms, setPlatforms] =
@@ -93,6 +88,7 @@ export default function EditorApp() {
   const [presets, setPresets] = useState<SavedPreset[]>(() => loadPresets());
   const [presetName, setPresetName] = useState("");
   const [analyzeToken, setAnalyzeToken] = useState(0);
+  const [dragId, setDragId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const selectedSizes = useMemo(
@@ -113,6 +109,7 @@ export default function EditorApp() {
     return (
       selectedSizes.find((s) => s.id === previewSizeId) ??
       selectedSizes.find((s) => s.platform === "iphone") ??
+      selectedSizes.find((s) => s.platform === "dual") ??
       selectedSizes[0] ??
       null
     );
@@ -132,15 +129,22 @@ export default function EditorApp() {
     [],
   );
 
-  const patchDesign = useCallback(( partial: Partial<DesignState>) => {
-    startTransition(() => {
-      setDesign((d) => ({ ...d, ...partial }));
-    });
+  const clearResults = useCallback(() => {
     setResults((prev) => {
       revokeResults(prev);
       return [];
     });
   }, []);
+
+  const patchDesign = useCallback(
+    (partial: Partial<DesignState>) => {
+      startTransition(() => {
+        setDesign((d) => ({ ...d, ...partial }));
+      });
+      clearResults();
+    },
+    [clearResults],
+  );
 
   const patchText = useCallback(
     (partial: Partial<DesignState["text"]>) => {
@@ -150,53 +154,68 @@ export default function EditorApp() {
           text: { ...d.text, ...partial },
         }));
       });
-      setResults((prev) => {
-        revokeResults(prev);
-        return [];
-      });
+      clearResults();
     },
-    [],
+    [clearResults],
   );
 
-  const addFiles = useCallback(async (list: FileList | File[]) => {
-    setError(null);
-    const files = Array.from(list).filter(isAcceptedFile);
-    if (files.length === 0) {
-      setError("Please choose PNG, JPEG, or WebP images.");
-      return;
-    }
-    try {
-      const loaded = await Promise.all(files.map(loadSourceImage));
+  const addFiles = useCallback(
+    async (list: FileList | File[]) => {
+      setError(null);
+      const files = Array.from(list).filter(isAcceptedFile);
+      if (files.length === 0) {
+        setError("Please choose PNG, JPEG, or WebP images.");
+        return;
+      }
+      try {
+        const loaded = await Promise.all(files.map(loadSourceImage));
+        setSources((prev) => {
+          const next = [...prev, ...loaded];
+          if (!activeSourceId && next[0]) setActiveSourceId(next[0].id);
+          return next;
+        });
+        clearResults();
+        setStep("devices");
+        setAnalyzeToken((n) => n + 1);
+      } catch {
+        setError("Could not read one or more images. Try a different file.");
+      }
+    },
+    [activeSourceId, clearResults],
+  );
+
+  const removeSource = useCallback(
+    (id: string) => {
       setSources((prev) => {
-        const next = [...prev, ...loaded];
-        if (!activeSourceId && next[0]) setActiveSourceId(next[0].id);
+        const next = prev.filter((s) => s.id !== id);
+        const removed = prev.find((s) => s.id === id);
+        if (removed) revokeSource(removed);
+        if (activeSourceId === id) setActiveSourceId(next[0]?.id ?? null);
         return next;
       });
       setResults((prev) => {
-        revokeResults(prev);
-        return [];
+        const keep = prev.filter((r) => r.sourceId !== id);
+        revokeResults(prev.filter((r) => r.sourceId === id));
+        return keep;
       });
-      setStep("design");
-      setAnalyzeToken((n) => n + 1);
-    } catch {
-      setError("Could not read one or more images. Try a different file.");
-    }
-  }, [activeSourceId]);
+    },
+    [activeSourceId],
+  );
 
-  const removeSource = useCallback((id: string) => {
+  const reorderSources = useCallback((fromId: string, toId: string) => {
+    if (fromId === toId) return;
     setSources((prev) => {
-      const next = prev.filter((s) => s.id !== id);
-      const removed = prev.find((s) => s.id === id);
-      if (removed) revokeSource(removed);
-      if (activeSourceId === id) setActiveSourceId(next[0]?.id ?? null);
+      const from = prev.findIndex((s) => s.id === fromId);
+      const to = prev.findIndex((s) => s.id === toId);
+      if (from < 0 || to < 0) return prev;
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      if (!item) return prev;
+      next.splice(to, 0, item);
       return next;
     });
-    setResults((prev) => {
-      const keep = prev.filter((r) => r.sourceId !== id);
-      revokeResults(prev.filter((r) => r.sourceId === id));
-      return keep;
-    });
-  }, [activeSourceId]);
+    clearResults();
+  }, [clearResults]);
 
   const clearAll = useCallback(() => {
     setSources((prev) => {
@@ -204,14 +223,11 @@ export default function EditorApp() {
       return [];
     });
     setActiveSourceId(null);
-    setResults((prev) => {
-      revokeResults(prev);
-      return [];
-    });
+    clearResults();
     setProgress({ done: 0, total: 0 });
     setError(null);
     setStep("upload");
-  }, []);
+  }, [clearResults]);
 
   const togglePlatform = useCallback((id: PlatformId) => {
     setPlatforms((prev) =>
@@ -221,11 +237,8 @@ export default function EditorApp() {
           : prev.filter((p) => p !== id)
         : [...prev, id],
     );
-    setResults((prev) => {
-      revokeResults(prev);
-      return [];
-    });
-  }, []);
+    clearResults();
+  }, [clearResults]);
 
   const setBgKind = useCallback(
     (kind: BackgroundKind) => {
@@ -289,10 +302,7 @@ export default function EditorApp() {
     setProgress({ done: 0, total: jobCount });
     setStep("export");
     try {
-      setResults((prev) => {
-        revokeResults(prev);
-        return [];
-      });
+      clearResults();
       const generated = await generateAll({
         sources,
         sizes: selectedSizes,
@@ -308,7 +318,7 @@ export default function EditorApp() {
     } finally {
       setBusy(false);
     }
-  }, [sources, selectedSizes, design, jobCount]);
+  }, [sources, selectedSizes, design, jobCount, clearResults]);
 
   const saveCurrentPreset = useCallback(() => {
     const name = presetName.trim() || `Preset ${presets.length + 1}`;
@@ -335,10 +345,22 @@ export default function EditorApp() {
       ? Math.round((progress.done / progress.total) * 100)
       : 0;
   const bgPreview = cssBackgroundPreview(design.background);
+  const hasSources = sources.length > 0;
+
+  const goNext = () => {
+    const order = FLOW_STEPS.map((s) => s.id);
+    const i = order.indexOf(step);
+    if (i < order.length - 1) setStep(order[i + 1]!);
+  };
+  const goBack = () => {
+    const order = FLOW_STEPS.map((s) => s.id);
+    const i = order.indexOf(step);
+    if (i > 0) setStep(order[i - 1]!);
+  };
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-8 px-4 py-8 sm:px-6 lg:py-10">
-      <header className="relative overflow-hidden rounded-[1.75rem] border border-[var(--line)] bg-[var(--surface)] px-6 py-8 sm:px-10 sm:py-10">
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-4 py-6 sm:px-6 lg:py-8">
+      <header className="relative overflow-hidden rounded-[1.75rem] border border-[var(--line)] bg-[var(--surface)] px-6 py-7 sm:px-10 sm:py-9">
         <div
           className="pointer-events-none absolute inset-0 opacity-90"
           style={{
@@ -354,39 +376,38 @@ export default function EditorApp() {
           <p className="font-[family-name:var(--font-display)] text-4xl tracking-tight text-[var(--ink)] sm:text-5xl">
             ASC Studio
           </p>
-          <h1 className="mt-3 text-xl font-medium text-[var(--ink-soft)] sm:text-2xl">
-            App Store screenshots, headers & search creatives
+          <h1 className="mt-2 text-lg font-medium text-[var(--ink-soft)] sm:text-xl">
+            Guided App Store screenshot studio
           </h1>
-          <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-[var(--muted)]">
-            Upload a set, design once, export every selected App Store Connect
-            size — frames, dual iPhones, product-page headers, and search
-            imagery — entirely in your browser.
+          <p className="mt-2 max-w-xl text-[14px] leading-relaxed text-[var(--muted)]">
+            Upload → devices → style → AI review → export. Dual iPhone layouts
+            across every iPhone size, plus an MIT-licensed foldable Duo frame.
           </p>
         </div>
       </header>
 
       <nav
-        aria-label="Workflow"
-        className="flex flex-wrap gap-2 rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface)] p-2"
+        aria-label="Guided workflow"
+        className="flex gap-1.5 overflow-x-auto rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface)] p-2"
       >
-        {STEPS.map((s, i) => {
+        {FLOW_STEPS.map((s, i) => {
           const active = step === s.id;
           const locked =
-            (s.id === "design" || s.id === "export") && sources.length === 0;
+            s.id !== "upload" && !hasSources;
           return (
             <button
               key={s.id}
               type="button"
               disabled={locked}
               onClick={() => setStep(s.id)}
-              className={`flex min-h-[52px] flex-1 items-center gap-3 rounded-[1rem] px-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+              className={`flex min-h-[48px] min-w-[7.5rem] flex-1 items-center gap-2.5 rounded-[0.9rem] px-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
                 active
                   ? "bg-[var(--ink)] text-white"
                   : "text-[var(--ink-soft)] hover:bg-[var(--surface-muted)]"
               }`}
             >
               <span
-                className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
                   active
                     ? "bg-[var(--accent)] text-white"
                     : "bg-[var(--surface-muted)] text-[var(--muted)]"
@@ -394,10 +415,12 @@ export default function EditorApp() {
               >
                 {i + 1}
               </span>
-              <span>
-                <span className="block text-[15px] font-medium">{s.label}</span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium">
+                  {s.label}
+                </span>
                 <span
-                  className={`block text-xs ${active ? "text-white/70" : "text-[var(--muted)]"}`}
+                  className={`block truncate text-[11px] ${active ? "text-white/70" : "text-[var(--muted)]"}`}
                 >
                   {s.hint}
                 </span>
@@ -407,23 +430,26 @@ export default function EditorApp() {
         })}
       </nav>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]">
-        <div className="min-w-0 space-y-6">
-          {(step === "upload" || step === "design") && (
-            <section
-              aria-labelledby="upload-heading"
-              className="space-y-4 rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface)] p-5"
-            >
+      {error && (
+        <p
+          role="alert"
+          className="rounded-xl bg-[#fff2f2] px-4 py-3 text-sm text-[#b91010]"
+        >
+          {error}
+        </p>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
+        <div className="min-w-0 space-y-5">
+          {step === "upload" && (
+            <section className="space-y-4 rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface)] p-5">
               <div>
-                <h2
-                  id="upload-heading"
-                  className="font-[family-name:var(--font-display)] text-xl text-[var(--ink)]"
-                >
-                  Screenshot set
+                <h2 className="font-[family-name:var(--font-display)] text-xl text-[var(--ink)]">
+                  1. Upload screenshots
                 </h2>
                 <p className="mt-1 text-sm text-[var(--muted)]">
-                  Manage several shots as one set — style applies consistently;
-                  dual layouts pair each shot with the next.
+                  Drop PNG/JPEG/WebP. Drag thumbs to reorder — dual layouts pair
+                  each shot with the next.
                 </p>
               </div>
               <div
@@ -451,7 +477,7 @@ export default function EditorApp() {
                     void addFiles(e.dataTransfer.files);
                 }}
                 onClick={() => inputRef.current?.click()}
-                className={`flex min-h-[140px] cursor-pointer flex-col items-center justify-center gap-2 border-2 border-dashed px-6 py-8 text-center transition-colors ${
+                className={`flex min-h-[160px] cursor-pointer flex-col items-center justify-center gap-2 border-2 border-dashed px-6 py-8 text-center transition-colors ${
                   dragOver
                     ? "border-[var(--accent)] bg-teal-50/60"
                     : "border-[var(--line)] bg-[var(--surface-muted)] hover:border-[var(--accent-soft)]"
@@ -462,7 +488,7 @@ export default function EditorApp() {
                   Drop screenshots here
                 </span>
                 <span className="text-sm text-[var(--muted)]">
-                  PNG, JPEG, or WebP — multiple files welcome
+                  or click to browse — multiple files welcome
                 </span>
                 <input
                   ref={inputRef}
@@ -476,63 +502,193 @@ export default function EditorApp() {
                   }}
                 />
               </div>
-              {sources.length > 0 && (
-                <ul className="flex flex-wrap gap-3">
-                  {sources.map((source, index) => {
-                    const selected = source.id === activeSource?.id;
-                    return (
-                      <li key={source.id} className="relative w-[96px]">
-                        <button
-                          type="button"
-                          onClick={() => setActiveSourceId(source.id)}
-                          className={`block w-full overflow-hidden bg-[var(--surface-muted)] ${
-                            selected
-                              ? "ring-2 ring-[var(--accent)] ring-offset-2"
-                              : ""
-                          }`}
-                          style={{ borderRadius: "0.85rem" }}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={source.previewUrl}
-                            alt={source.name}
-                            className="aspect-[9/16] w-full object-cover"
-                          />
-                          <span className="block truncate px-1.5 py-1 text-[10px] text-[var(--muted)]">
-                            {index + 1}. {source.name}
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`Remove ${source.name}`}
-                          onClick={() => removeSource(source.id)}
-                          className="absolute top-1 right-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/65 text-sm text-white"
-                        >
-                          ×
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
+              {sources.length === 0 ? (
+                <p className="rounded-xl bg-[var(--surface-muted)] px-4 py-3 text-sm text-[var(--muted)]">
+                  Empty set — add at least one screenshot to continue.
+                </p>
+              ) : (
+                <ScreenshotStrip
+                  sources={sources}
+                  activeId={activeSource?.id ?? null}
+                  dragId={dragId}
+                  onSelect={setActiveSourceId}
+                  onRemove={removeSource}
+                  onDragStart={setDragId}
+                  onDropOn={(id) => {
+                    if (dragId) reorderSources(dragId, id);
+                    setDragId(null);
+                  }}
+                />
               )}
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  disabled={!hasSources}
+                  onClick={() => setStep("devices")}
+                  className="min-h-[48px] rounded-full bg-[var(--accent)] px-6 text-sm font-medium text-white disabled:opacity-40"
+                >
+                  Continue to devices
+                </button>
+              </div>
             </section>
           )}
 
-          {step === "design" && (
+          {step === "devices" && (
+            <section className="space-y-5 rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface)] p-5">
+              <div>
+                <h2 className="font-[family-name:var(--font-display)] text-xl text-[var(--ink)]">
+                  2. Devices & layout
+                </h2>
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  Dual compositions are first-class on every iPhone ASC size.
+                  Foldable uses the MIT Duo bezel from bunlongheng/frames.
+                </p>
+              </div>
+
+              <ScreenshotStrip
+                sources={sources}
+                activeId={activeSource?.id ?? null}
+                dragId={dragId}
+                onSelect={setActiveSourceId}
+                onRemove={removeSource}
+                onDragStart={setDragId}
+                onDropOn={(id) => {
+                  if (dragId) reorderSources(dragId, id);
+                  setDragId(null);
+                }}
+              />
+
+              <div className="space-y-2">
+                <h3 className="text-xs font-medium tracking-wide text-[var(--muted)] uppercase">
+                  Composition
+                </h3>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {LAYOUTS.map((l) => (
+                    <button
+                      key={l.id}
+                      type="button"
+                      aria-pressed={design.layout === l.id}
+                      onClick={() => patchDesign({ layout: l.id })}
+                      className={`min-h-[64px] rounded-xl px-3 py-2 text-left transition-colors ${
+                        design.layout === l.id
+                          ? "bg-[var(--accent)] text-white"
+                          : "bg-[var(--surface-muted)] text-[var(--ink)] hover:bg-[#dce6e3]"
+                      }`}
+                    >
+                      <span className="block text-sm font-medium">
+                        {l.label}
+                      </span>
+                      <span
+                        className={`block text-[11px] ${design.layout === l.id ? "text-white/75" : "text-[var(--muted)]"}`}
+                      >
+                        {l.hint}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="text-xs font-medium tracking-wide text-[var(--muted)] uppercase">
+                  Export targets
+                </h3>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                  {PLATFORMS.map((platform) => {
+                    const on = platforms.includes(platform.id);
+                    return (
+                      <button
+                        key={platform.id}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => togglePlatform(platform.id)}
+                        className={`min-h-[52px] rounded-xl px-3 py-2 text-sm font-medium ${
+                          on
+                            ? "bg-[var(--ink)] text-white"
+                            : "bg-[var(--surface-muted)] text-[var(--ink)]"
+                        }`}
+                      >
+                        <span className="block">{platform.label}</span>
+                        <span
+                          className={`block text-[10px] ${on ? "text-white/60" : "text-[var(--muted)]"}`}
+                        >
+                          {platform.group}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-[var(--muted)]">
+                  {selectedSizes.length} sizes · {jobCount} outputs
+                  {design.layout.startsWith("dual")
+                    ? " · dual pairs shot N with N+1"
+                    : ""}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={design.frames}
+                  onClick={() => patchDesign({ frames: !design.frames })}
+                  className={`min-h-[44px] rounded-full px-5 text-sm font-medium ${
+                    design.frames
+                      ? "bg-[var(--ink)] text-white"
+                      : "bg-[var(--surface-muted)] text-[var(--ink)]"
+                  }`}
+                >
+                  Frames {design.frames ? "on" : "off"}
+                </button>
+                {(
+                  [
+                    { id: "contain" as const, label: "Contain" },
+                    { id: "cover" as const, label: "Cover" },
+                  ] as const
+                ).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-pressed={design.mode === item.id}
+                    onClick={() => patchDesign({ mode: item.id })}
+                    className={`min-h-[44px] rounded-full px-5 text-sm font-medium ${
+                      design.mode === item.id
+                        ? "bg-[var(--accent)] text-white"
+                        : "bg-[var(--surface-muted)] text-[var(--ink)]"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-[var(--muted)]">
+                Screenshots always cover-fill the device screen first; contain/cover
+                only scales the framed composition to the ASC canvas.
+              </p>
+
+              <FlowNav onBack={goBack} onNext={() => setStep("style")} nextLabel="Continue to style" />
+            </section>
+          )}
+
+          {step === "style" && (
             <>
               <section className="space-y-4 rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface)] p-5">
-                <h2 className="font-[family-name:var(--font-display)] text-xl text-[var(--ink)]">
-                  Templates
-                </h2>
+                <div>
+                  <h2 className="font-[family-name:var(--font-display)] text-xl text-[var(--ink)]">
+                    3. Style
+                  </h2>
+                  <p className="mt-1 text-sm text-[var(--muted)]">
+                    Captions, type, background, and presets. Live preview stays
+                    on the right (below on mobile).
+                  </p>
+                </div>
+
                 <div className="grid gap-2 sm:grid-cols-2">
                   {LAYOUT_TEMPLATES.map((tpl) => (
                     <button
                       key={tpl.id}
                       type="button"
-                      onClick={() =>
-                        patchDesign(mergeTemplate(design, tpl))
-                      }
-                      className="min-h-[64px] rounded-[1rem] border border-[var(--line)] bg-[var(--surface-muted)] px-4 py-3 text-left transition-colors hover:border-[var(--accent-soft)]"
+                      onClick={() => patchDesign(mergeTemplate(design, tpl))}
+                      className="min-h-[60px] rounded-[1rem] border border-[var(--line)] bg-[var(--surface-muted)] px-4 py-3 text-left hover:border-[var(--accent-soft)]"
                     >
                       <span className="block text-sm font-medium text-[var(--ink)]">
                         {tpl.label}
@@ -543,23 +699,16 @@ export default function EditorApp() {
                     </button>
                   ))}
                 </div>
-              </section>
 
-              <section className="space-y-4 rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface)] p-5">
-                <h2 className="font-[family-name:var(--font-display)] text-xl text-[var(--ink)]">
-                  Caption & type
-                </h2>
                 <label className="block space-y-1.5">
                   <span className="text-xs font-medium tracking-wide text-[var(--muted)] uppercase">
                     Headline
                   </span>
                   <input
                     value={design.text.headline}
-                    onChange={(e) =>
-                      patchText({ headline: e.target.value })
-                    }
+                    onChange={(e) => patchText({ headline: e.target.value })}
                     placeholder="Short marketing headline"
-                    className="min-h-[44px] w-full rounded-xl border border-[var(--line)] bg-white px-3 text-[15px] text-[var(--ink)] outline-none focus:border-[var(--accent)]"
+                    className="min-h-[44px] w-full rounded-xl border border-[var(--line)] bg-white px-3 text-[15px] outline-none focus:border-[var(--accent)]"
                   />
                 </label>
                 <label className="block space-y-1.5">
@@ -568,13 +717,12 @@ export default function EditorApp() {
                   </span>
                   <input
                     value={design.text.subtitle}
-                    onChange={(e) =>
-                      patchText({ subtitle: e.target.value })
-                    }
+                    onChange={(e) => patchText({ subtitle: e.target.value })}
                     placeholder="Supporting line"
-                    className="min-h-[44px] w-full rounded-xl border border-[var(--line)] bg-white px-3 text-[15px] text-[var(--ink)] outline-none focus:border-[var(--accent)]"
+                    className="min-h-[44px] w-full rounded-xl border border-[var(--line)] bg-white px-3 text-[15px] outline-none focus:border-[var(--accent)]"
                   />
                 </label>
+
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="block space-y-1.5">
                     <span className="text-xs font-medium tracking-wide text-[var(--muted)] uppercase">
@@ -582,29 +730,14 @@ export default function EditorApp() {
                     </span>
                     <select
                       value={design.text.fontId}
-                      onChange={(e) =>
-                        patchText({ fontId: e.target.value })
-                      }
+                      onChange={(e) => patchText({ fontId: e.target.value })}
                       className="min-h-[44px] w-full rounded-xl border border-[var(--line)] bg-white px-3 text-[15px]"
                     >
-                      <optgroup label="Bundled Google fonts">
-                        {FONT_OPTIONS.filter((f) => f.kind === "google").map(
-                          (f) => (
-                            <option key={f.id} value={f.id}>
-                              {f.label}
-                            </option>
-                          ),
-                        )}
-                      </optgroup>
-                      <optgroup label="Web-safe">
-                        {FONT_OPTIONS.filter((f) => f.kind === "websafe").map(
-                          (f) => (
-                            <option key={f.id} value={f.id}>
-                              {f.label}
-                            </option>
-                          ),
-                        )}
-                      </optgroup>
+                      {FONT_OPTIONS.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.label}
+                        </option>
+                      ))}
                     </select>
                   </label>
                   <label className="block space-y-1.5">
@@ -628,10 +761,11 @@ export default function EditorApp() {
                     </select>
                   </label>
                 </div>
+
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="block space-y-1.5">
-                    <span className="text-xs font-medium tracking-wide text-[var(--muted)] uppercase">
-                      Headline size
+                    <span className="text-xs text-[var(--muted)]">
+                      Headline {design.text.headlineSize}px
                     </span>
                     <input
                       type="range"
@@ -639,19 +773,14 @@ export default function EditorApp() {
                       max={120}
                       value={design.text.headlineSize}
                       onChange={(e) =>
-                        patchText({
-                          headlineSize: Number(e.target.value),
-                        })
+                        patchText({ headlineSize: Number(e.target.value) })
                       }
                       className="w-full"
                     />
-                    <span className="text-xs text-[var(--muted)]">
-                      {design.text.headlineSize}px
-                    </span>
                   </label>
                   <label className="block space-y-1.5">
-                    <span className="text-xs font-medium tracking-wide text-[var(--muted)] uppercase">
-                      Subtitle size
+                    <span className="text-xs text-[var(--muted)]">
+                      Subtitle {design.text.subtitleSize}px
                     </span>
                     <input
                       type="range"
@@ -659,87 +788,67 @@ export default function EditorApp() {
                       max={64}
                       value={design.text.subtitleSize}
                       onChange={(e) =>
-                        patchText({
-                          subtitleSize: Number(e.target.value),
-                        })
+                        patchText({ subtitleSize: Number(e.target.value) })
                       }
                       className="w-full"
                     />
-                    <span className="text-xs text-[var(--muted)]">
-                      {design.text.subtitleSize}px
-                    </span>
                   </label>
                 </div>
-                <div className="flex flex-wrap items-center gap-4">
+
+                <div className="flex flex-wrap items-center gap-3">
                   <label className="flex items-center gap-2 text-sm">
                     <span className="text-[var(--muted)]">Color</span>
                     <input
                       type="color"
                       value={design.text.color}
-                      onChange={(e) =>
-                        patchText({ color: e.target.value })
-                      }
+                      onChange={(e) => patchText({ color: e.target.value })}
                       className="h-10 w-12 cursor-pointer rounded-lg border border-[var(--line)] bg-white p-1"
                     />
                   </label>
-                  <div
-                    role="group"
-                    aria-label="Alignment"
-                    className="inline-flex rounded-xl bg-[var(--surface-muted)] p-1"
-                  >
-                    {(
-                      [
-                        ["left", "Left"],
-                        ["center", "Center"],
-                        ["right", "Right"],
-                      ] as [TextAlign, string][]
-                    ).map(([id, label]) => (
-                      <button
-                        key={id}
-                        type="button"
-                        aria-pressed={design.text.align === id}
-                        onClick={() => patchText({ align: id })}
-                        className={`min-h-[40px] rounded-lg px-3 text-sm font-medium ${
-                          design.text.align === id
-                            ? "bg-white text-[var(--ink)] shadow-sm"
-                            : "text-[var(--muted)]"
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <div
-                    role="group"
-                    aria-label="Text position"
-                    className="inline-flex rounded-xl bg-[var(--surface-muted)] p-1"
-                  >
-                    {(
-                      [
-                        ["top", "Top"],
-                        ["bottom", "Bottom"],
-                      ] as [TextPosition, string][]
-                    ).map(([id, label]) => (
-                      <button
-                        key={id}
-                        type="button"
-                        aria-pressed={design.text.position === id}
-                        onClick={() => patchText({ position: id })}
-                        className={`min-h-[40px] rounded-lg px-3 text-sm font-medium ${
-                          design.text.position === id
-                            ? "bg-white text-[var(--ink)] shadow-sm"
-                            : "text-[var(--muted)]"
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
+                  {(
+                    [
+                      ["left", "Left"],
+                      ["center", "Center"],
+                      ["right", "Right"],
+                    ] as [TextAlign, string][]
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => patchText({ align: id })}
+                      className={`min-h-[40px] rounded-full px-3 text-sm ${
+                        design.text.align === id
+                          ? "bg-[var(--ink)] text-white"
+                          : "bg-[var(--surface-muted)]"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  {(
+                    [
+                      ["top", "Top"],
+                      ["bottom", "Bottom"],
+                    ] as [TextPosition, string][]
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => patchText({ position: id })}
+                      className={`min-h-[40px] rounded-full px-3 text-sm ${
+                        design.text.position === id
+                          ? "bg-[var(--ink)] text-white"
+                          : "bg-[var(--surface-muted)]"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
+
                 <label className="block space-y-1.5">
-                  <span className="text-xs font-medium tracking-wide text-[var(--muted)] uppercase">
-                    Edge inset ({design.text.insetPercent}%)
-                    {design.snapEnabled ? " · snap 5%" : ""}
+                  <span className="text-xs text-[var(--muted)]">
+                    Edge inset {design.text.insetPercent}%
                   </span>
                   <input
                     type="range"
@@ -758,158 +867,13 @@ export default function EditorApp() {
                     className="w-full"
                   />
                 </label>
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={design.showGuides}
-                    onClick={() =>
-                      patchDesign({ showGuides: !design.showGuides })
-                    }
-                    className={`min-h-[40px] rounded-full px-4 text-sm font-medium ${
-                      design.showGuides
-                        ? "bg-[var(--ink)] text-white"
-                        : "bg-[var(--surface-muted)] text-[var(--ink)]"
-                    }`}
-                  >
-                    Alignment guides
-                  </button>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={design.snapEnabled}
-                    onClick={() =>
-                      patchDesign({ snapEnabled: !design.snapEnabled })
-                    }
-                    className={`min-h-[40px] rounded-full px-4 text-sm font-medium ${
-                      design.snapEnabled
-                        ? "bg-[var(--ink)] text-white"
-                        : "bg-[var(--surface-muted)] text-[var(--ink)]"
-                    }`}
-                  >
-                    Snap helpers
-                  </button>
-                </div>
               </section>
 
               <section className="space-y-4 rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface)] p-5">
-                <h2 className="font-[family-name:var(--font-display)] text-xl text-[var(--ink)]">
-                  Layout & frame
-                </h2>
-                <div className="flex flex-wrap gap-2">
-                  {LAYOUTS.map((l) => (
-                    <button
-                      key={l.id}
-                      type="button"
-                      aria-pressed={design.layout === l.id}
-                      onClick={() => patchDesign({ layout: l.id })}
-                      className={`min-h-[44px] rounded-full px-4 text-sm font-medium ${
-                        design.layout === l.id
-                          ? "bg-[var(--accent)] text-white"
-                          : "bg-[var(--surface-muted)] text-[var(--ink)]"
-                      }`}
-                    >
-                      {l.label}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={design.frames}
-                  onClick={() => patchDesign({ frames: !design.frames })}
-                  className={`flex min-h-[48px] w-full items-center justify-between rounded-2xl px-5 text-[15px] font-medium sm:w-auto sm:min-w-[260px] ${
-                    design.frames
-                      ? "bg-[var(--ink)] text-white"
-                      : "bg-[var(--surface-muted)] text-[var(--ink)]"
-                  }`}
-                >
-                  <span>
-                    {design.frames ? "Device frames on" : "Device frames off"}
-                  </span>
-                  <span
-                    className={`relative h-7 w-12 rounded-full ${
-                      design.frames ? "bg-[var(--accent)]" : "bg-[#c5cdcb]"
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-0.5 h-6 w-6 rounded-full bg-white transition-transform ${
-                        design.frames ? "translate-x-5" : "translate-x-0.5"
-                      }`}
-                    />
-                  </span>
-                </button>
-                <div
-                  role="group"
-                  aria-label="Resize mode"
-                  className="inline-flex rounded-xl bg-[var(--surface-muted)] p-1"
-                >
-                  {(
-                    [
-                      {
-                        id: "contain" as const,
-                        label: "Contain",
-                        hint: "Fit device, pad canvas",
-                      },
-                      {
-                        id: "cover" as const,
-                        label: "Cover",
-                        hint: "Fill canvas, may crop",
-                      },
-                    ] as const
-                  ).map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      aria-pressed={design.mode === item.id}
-                      onClick={() => patchDesign({ mode: item.id })}
-                      className={`min-h-[48px] rounded-lg px-4 py-2 text-left ${
-                        design.mode === item.id
-                          ? "bg-white text-[var(--ink)] shadow-sm"
-                          : "text-[var(--muted)]"
-                      }`}
-                    >
-                      <span className="block text-sm font-medium">
-                        {item.label}
-                      </span>
-                      <span className="block text-xs opacity-80">
-                        {item.hint}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-[var(--muted)]">
-                  Screenshots always cover-fill the device screen hole first;
-                  contain/cover only scales the framed composition to the ASC
-                  canvas.
-                </p>
-              </section>
-
-              <AiFeatures
-                source={activeSource}
-                design={design}
-                onPatchDesign={patchDesign}
-                onPatchText={patchText}
-                platforms={platforms}
-                onSetPlatforms={(next) => {
-                  setPlatforms(next);
-                  setResults((prev) => {
-                    revokeResults(prev);
-                    return [];
-                  });
-                }}
-                analyzeToken={analyzeToken}
-              />
-
-              <section className="space-y-4 rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface)] p-5">
-                <h2 className="font-[family-name:var(--font-display)] text-xl text-[var(--ink)]">
+                <h3 className="font-[family-name:var(--font-display)] text-lg text-[var(--ink)]">
                   Background
-                </h2>
-                <div
-                  role="group"
-                  aria-label="Background type"
-                  className="inline-flex rounded-xl bg-[var(--surface-muted)] p-1"
-                >
+                </h3>
+                <div className="inline-flex rounded-xl bg-[var(--surface-muted)] p-1">
                   {(
                     [
                       { id: "solid", label: "Solid" },
@@ -920,11 +884,10 @@ export default function EditorApp() {
                     <button
                       key={kind.id}
                       type="button"
-                      aria-pressed={design.background.kind === kind.id}
                       onClick={() => setBgKind(kind.id)}
-                      className={`min-h-[44px] rounded-lg px-5 text-sm font-medium ${
+                      className={`min-h-[40px] rounded-lg px-4 text-sm font-medium ${
                         design.background.kind === kind.id
-                          ? "bg-white text-[var(--ink)] shadow-sm"
+                          ? "bg-white shadow-sm"
                           : "text-[var(--muted)]"
                       }`}
                     >
@@ -938,52 +901,31 @@ export default function EditorApp() {
                   aria-hidden
                 />
                 {design.background.kind === "solid" && (
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap gap-2">
-                      {SOLID_PRESETS.map((preset) => (
-                        <button
-                          key={preset.color}
-                          type="button"
-                          title={preset.label}
-                          aria-label={preset.label}
-                          onClick={() =>
-                            patchDesign({
-                              background: {
-                                kind: "solid",
-                                color: preset.color,
-                              },
-                            })
-                          }
-                          className={`h-10 w-10 rounded-full border-2 ${
-                            design.background.kind === "solid" &&
-                            design.background.color === preset.color
-                              ? "border-[var(--accent)]"
-                              : "border-[var(--line)]"
-                          }`}
-                          style={{ backgroundColor: preset.color }}
-                        />
-                      ))}
-                    </div>
-                    <label className="flex items-center gap-3 text-sm">
-                      <span className="text-[var(--muted)]">Custom</span>
-                      <input
-                        type="color"
-                        value={
-                          design.background.kind === "solid"
-                            ? design.background.color
-                            : "#000000"
-                        }
-                        onChange={(e) =>
+                  <div className="flex flex-wrap gap-2">
+                    {SOLID_PRESETS.map((preset) => (
+                      <button
+                        key={preset.color}
+                        type="button"
+                        title={preset.label}
+                        onClick={() =>
                           patchDesign({
-                            background: {
-                              kind: "solid",
-                              color: e.target.value,
-                            },
+                            background: { kind: "solid", color: preset.color },
                           })
                         }
-                        className="h-10 w-14 cursor-pointer rounded-lg border border-[var(--line)] bg-white p-1"
+                        className="h-10 w-10 rounded-full border-2 border-[var(--line)]"
+                        style={{ backgroundColor: preset.color }}
                       />
-                    </label>
+                    ))}
+                    <input
+                      type="color"
+                      value={design.background.color}
+                      onChange={(e) =>
+                        patchDesign({
+                          background: { kind: "solid", color: e.target.value },
+                        })
+                      }
+                      className="h-10 w-14 rounded-lg border border-[var(--line)] bg-white p-1"
+                    />
                   </div>
                 )}
                 {design.background.kind === "gradient" && (
@@ -1003,7 +945,7 @@ export default function EditorApp() {
                               },
                             })
                           }
-                          className="h-10 min-w-[72px] rounded-xl border border-[var(--line)] px-2 text-[11px] font-medium text-white"
+                          className="h-10 min-w-[72px] rounded-xl px-2 text-[11px] font-medium text-white"
                           style={{
                             background: `linear-gradient(135deg, ${preset.from}, ${preset.to})`,
                           }}
@@ -1011,42 +953,6 @@ export default function EditorApp() {
                           {preset.label}
                         </button>
                       ))}
-                    </div>
-                    <div className="flex flex-wrap gap-4">
-                      <label className="flex items-center gap-2 text-sm">
-                        <span className="text-[var(--muted)]">From</span>
-                        <input
-                          type="color"
-                          value={design.background.from}
-                          onChange={(e) =>
-                            patchDesign({
-                              background: {
-                                ...design.background,
-                                kind: "gradient",
-                                from: e.target.value,
-                              } as Background,
-                            })
-                          }
-                          className="h-10 w-14 cursor-pointer rounded-lg border border-[var(--line)] bg-white p-1"
-                        />
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
-                        <span className="text-[var(--muted)]">To</span>
-                        <input
-                          type="color"
-                          value={design.background.to}
-                          onChange={(e) =>
-                            patchDesign({
-                              background: {
-                                ...design.background,
-                                kind: "gradient",
-                                to: e.target.value,
-                              } as Background,
-                            })
-                          }
-                          className="h-10 w-14 cursor-pointer rounded-lg border border-[var(--line)] bg-white p-1"
-                        />
-                      </label>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {GRADIENT_DIRECTIONS.map((dir) => (
@@ -1062,11 +968,11 @@ export default function EditorApp() {
                               } as Background,
                             })
                           }
-                          className={`min-h-[40px] rounded-full px-4 text-xs font-medium ${
+                          className={`min-h-[36px] rounded-full px-3 text-xs ${
                             design.background.kind === "gradient" &&
                             design.background.direction === dir.id
                               ? "bg-[var(--ink)] text-white"
-                              : "bg-[var(--surface-muted)] text-[var(--ink)]"
+                              : "bg-[var(--surface-muted)]"
                           }`}
                         >
                           {dir.label}
@@ -1076,37 +982,38 @@ export default function EditorApp() {
                   </div>
                 )}
                 {design.background.kind === "image" && (
-                  <ImageBackgroundControls
-                    imageDataUrl={design.background.imageDataUrl}
-                    fallbackColor={design.background.fallbackColor}
-                    onChange={(next) => patchDesign({ background: next })}
-                  />
+                  <p className="text-sm text-[var(--muted)]">
+                    {design.background.imageDataUrl
+                      ? "AI background applied — regenerate in AI review."
+                      : "No image yet — generate one in the AI review step."}
+                  </p>
                 )}
               </section>
 
-              <section className="space-y-4 rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface)] p-5">
-                <h2 className="font-[family-name:var(--font-display)] text-xl text-[var(--ink)]">
-                  Saved presets
-                </h2>
-                <p className="text-sm text-[var(--muted)]">
-                  Stored in this browser via localStorage.
-                </p>
+              <section className="space-y-3 rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface)] p-5">
+                <h3 className="font-[family-name:var(--font-display)] text-lg text-[var(--ink)]">
+                  Presets
+                </h3>
                 <div className="flex flex-wrap gap-2">
                   <input
                     value={presetName}
                     onChange={(e) => setPresetName(e.target.value)}
                     placeholder="Preset name"
-                    className="min-h-[44px] min-w-[160px] flex-1 rounded-xl border border-[var(--line)] bg-white px-3 text-sm"
+                    className="min-h-[44px] min-w-[140px] flex-1 rounded-xl border border-[var(--line)] bg-white px-3 text-sm"
                   />
                   <button
                     type="button"
                     onClick={saveCurrentPreset}
                     className="min-h-[44px] rounded-full bg-[var(--accent)] px-5 text-sm font-medium text-white"
                   >
-                    Save preset
+                    Save
                   </button>
                 </div>
-                {presets.length > 0 && (
+                {presets.length === 0 ? (
+                  <p className="text-sm text-[var(--muted)]">
+                    No saved presets yet (stored in localStorage).
+                  </p>
+                ) : (
                   <ul className="space-y-2">
                     {presets.map((p) => (
                       <li
@@ -1115,14 +1022,14 @@ export default function EditorApp() {
                       >
                         <button
                           type="button"
-                          className="text-left text-sm font-medium text-[var(--ink)]"
+                          className="text-sm font-medium"
                           onClick={() => patchDesign(applyPreset(p))}
                         >
                           {p.name}
                         </button>
                         <button
                           type="button"
-                          className="text-xs text-[var(--muted)] hover:text-[#b91c1c]"
+                          className="text-xs text-[var(--muted)]"
                           onClick={() => setPresets(deletePreset(p.id))}
                         >
                           Delete
@@ -1132,51 +1039,55 @@ export default function EditorApp() {
                   </ul>
                 )}
               </section>
+
+              <FlowNav onBack={goBack} onNext={() => setStep("review")} nextLabel="Continue to AI review" />
             </>
           )}
 
-          {(step === "export" || step === "design") && (
+          {step === "review" && (
+            <section className="space-y-4">
+              <div className="rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface)] p-5">
+                <h2 className="font-[family-name:var(--font-display)] text-xl text-[var(--ink)]">
+                  4. AI review
+                </h2>
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  Multilingual copy, layout pick, backgrounds, and a scorecard
+                  with one-click fixes — via Vercel AI Gateway when configured.
+                </p>
+              </div>
+              <ReviewPanel
+                source={activeSource}
+                sourcesCount={sources.length}
+                design={design}
+                onPatchDesign={patchDesign}
+                onPatchText={patchText}
+                platforms={platforms}
+                onSetPlatforms={(next) => {
+                  setPlatforms(next);
+                  clearResults();
+                }}
+                analyzeToken={analyzeToken}
+              />
+              <FlowNav
+                onBack={goBack}
+                onNext={() => setStep("export")}
+                nextLabel="Continue to export"
+              />
+            </section>
+          )}
+
+          {step === "export" && (
             <section className="space-y-4 rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface)] p-5">
               <div>
                 <h2 className="font-[family-name:var(--font-display)] text-xl text-[var(--ink)]">
-                  Export targets
+                  5. Export
                 </h2>
                 <p className="mt-1 text-sm text-[var(--muted)]">
-                  Batch export = every screenshot × every selected ASC size as
-                  a ZIP.
+                  Batch = every screenshot × every selected ASC size as opaque
+                  PNGs.
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                {PLATFORMS.map((platform) => {
-                  const on = platforms.includes(platform.id);
-                  return (
-                    <button
-                      key={platform.id}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() => togglePlatform(platform.id)}
-                      className={`min-h-[52px] rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
-                        on
-                          ? "bg-[var(--ink)] text-white"
-                          : "bg-[var(--surface-muted)] text-[var(--ink)] hover:bg-[#dce6e3]"
-                      }`}
-                    >
-                      <span className="block">{platform.label}</span>
-                      <span
-                        className={`block text-[10px] ${on ? "text-white/60" : "text-[var(--muted)]"}`}
-                      >
-                        {platform.group}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-xs text-[var(--muted)]">
-                {selectedSizes.length} sizes ·{" "}
-                {sources.length > 0
-                  ? `${jobCount} outputs`
-                  : "add screenshots to count outputs"}
-              </p>
+
               {selectedSizes.length > 0 && (
                 <label className="block space-y-1.5">
                   <span className="text-xs font-medium tracking-wide text-[var(--muted)] uppercase">
@@ -1190,18 +1101,18 @@ export default function EditorApp() {
                     {selectedSizes.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.displayName} · {formatSize(s)}
-                        {s.note ? ` — ${s.note}` : ""}
                       </option>
                     ))}
                   </select>
                 </label>
               )}
+
               <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                 <button
                   type="button"
                   disabled={busy || sources.length === 0 || platforms.length === 0}
                   onClick={() => void runGenerate()}
-                  className="min-h-[52px] rounded-full bg-[var(--accent)] px-8 text-[16px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  className="min-h-[52px] rounded-full bg-[var(--accent)] px-8 text-[16px] font-medium text-white disabled:opacity-40"
                 >
                   {busy ? `Exporting… ${pct}%` : "Export all selected"}
                 </button>
@@ -1209,21 +1120,20 @@ export default function EditorApp() {
                   type="button"
                   disabled={busy || results.length === 0}
                   onClick={() => void downloadZip(results)}
-                  className="min-h-[52px] rounded-full bg-[var(--ink)] px-8 text-[16px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  className="min-h-[52px] rounded-full bg-[var(--ink)] px-8 text-[16px] font-medium text-white disabled:opacity-40"
                 >
                   Download ZIP
                 </button>
-                {sources.length > 0 && (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={clearAll}
-                    className="min-h-[52px] rounded-full px-6 text-[16px] font-medium text-[var(--accent)] disabled:opacity-40"
-                  >
-                    Clear all
-                  </button>
-                )}
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={clearAll}
+                  className="min-h-[52px] rounded-full px-6 text-[16px] font-medium text-[var(--accent)]"
+                >
+                  Clear all
+                </button>
               </div>
+
               {busy && (
                 <div
                   role="progressbar"
@@ -1233,104 +1143,88 @@ export default function EditorApp() {
                   className="h-1.5 overflow-hidden rounded-full bg-[var(--surface-muted)]"
                 >
                   <div
-                    className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-150"
+                    className="h-full rounded-full bg-[var(--accent)] transition-[width]"
                     style={{ width: `${pct}%` }}
                   />
                 </div>
               )}
-              {error && (
-                <p
-                  role="alert"
-                  className="rounded-xl bg-[#fff2f2] px-4 py-3 text-sm text-[#b91010]"
-                >
-                  {error}
+
+              {!busy && results.length === 0 && (
+                <p className="rounded-xl bg-[var(--surface-muted)] px-4 py-3 text-sm text-[var(--muted)]">
+                  No exports yet — run Export to generate PNGs.
                 </p>
               )}
-            </section>
-          )}
 
-          {results.length > 0 && step === "export" && (
-            <section aria-labelledby="results-heading" className="space-y-6">
-              <div>
-                <h2
-                  id="results-heading"
-                  className="font-[family-name:var(--font-display)] text-xl text-[var(--ink)]"
-                >
-                  Results
-                </h2>
-                <p className="mt-1 text-sm text-[var(--muted)]">
-                  {results.length} opaque PNG
-                  {results.length === 1 ? "" : "s"} at exact ASC pixel sizes.
-                </p>
-              </div>
-              {grouped.map((group) => (
-                <div key={group.id} className="space-y-3">
-                  <h3 className="text-[15px] font-semibold text-[var(--ink)]">
-                    {group.label}
-                  </h3>
-                  <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {group.items.map((item) => (
-                      <li
-                        key={item.id}
-                        className="flex flex-col overflow-hidden rounded-[1.1rem] bg-[var(--surface)] border border-[var(--line)]"
-                      >
-                        <div className="flex aspect-[3/4] items-center justify-center bg-[#0c1618]/[10%]">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={item.previewUrl}
-                            alt={`${item.size.displayName} ${formatSize(item.size)}`}
-                            className="max-h-full max-w-full object-contain"
-                          />
-                        </div>
-                        <div className="flex flex-1 flex-col gap-1.5 p-3">
-                          <p className="text-[13px] font-medium leading-snug text-[var(--ink)]">
-                            {item.size.displayName}
-                          </p>
-                          <p className="text-[11px] text-[var(--muted)]">
-                            {formatSize(item.size)}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              downloadBlob(item.blob, item.filename)
-                            }
-                            className="mt-auto min-h-[40px] rounded-full bg-[var(--surface-muted)] text-[13px] font-medium text-[var(--accent)]"
+              {results.length > 0 && (
+                <div className="space-y-6">
+                  <p className="text-sm text-[var(--muted)]">
+                    {results.length} opaque PNG
+                    {results.length === 1 ? "" : "s"} ready.
+                  </p>
+                  {grouped.map((group) => (
+                    <div key={group.id} className="space-y-3">
+                      <h3 className="text-[15px] font-semibold text-[var(--ink)]">
+                        {group.label}
+                      </h3>
+                      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                        {group.items.map((item) => (
+                          <li
+                            key={item.id}
+                            className="flex flex-col overflow-hidden rounded-[1.1rem] border border-[var(--line)] bg-[var(--surface)]"
                           >
-                            Download PNG
-                          </button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                            <div className="flex aspect-[3/4] items-center justify-center bg-[#0c1618]/[10%]">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={item.previewUrl}
+                                alt={`${item.size.displayName} ${formatSize(item.size)}`}
+                                className="max-h-full max-w-full object-contain"
+                              />
+                            </div>
+                            <div className="flex flex-1 flex-col gap-1.5 p-3">
+                              <p className="text-[13px] font-medium text-[var(--ink)]">
+                                {item.size.displayName}
+                              </p>
+                              <p className="text-[11px] text-[var(--muted)]">
+                                {formatSize(item.size)}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  downloadBlob(item.blob, item.filename)
+                                }
+                                className="mt-auto min-h-[40px] rounded-full bg-[var(--surface-muted)] text-[13px] font-medium text-[var(--accent)]"
+                              >
+                                Download PNG
+                              </button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
+
+              <FlowNav onBack={goBack} onNext={goNext} hideNext />
             </section>
           )}
 
           <ComingSoon />
 
           <footer className="border-t border-[var(--line)] pt-5 text-xs leading-relaxed text-[var(--muted)]">
-            Screenshot sizes from{" "}
+            Dual iPhone layouts export at every iPhone ASC size. Foldable frame:
+            MIT{" "}
             <a
-              href="https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/"
+              href="https://github.com/bunlongheng/frames"
               className="text-[var(--accent)] underline-offset-2 hover:underline"
               target="_blank"
               rel="noopener noreferrer"
             >
-              Apple screenshot specifications
+              bunlongheng/frames
             </a>
-            . Header & search sizes from{" "}
-            <a
-              href="https://developer.apple.com/help/app-store-connect/reference/app-information/creative-assets-specifications/"
-              className="text-[var(--accent)] underline-offset-2 hover:underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              creative assets specifications
-            </a>
-            . Search 3:2 exports use the documented maximum (3840×2560).
-            Composition stays on your device; optional AI calls use server-side
-            xAI routes only when <code>XAI_API_KEY</code> is set.
+            . AI via Vercel AI Gateway (
+            <code>AI_GATEWAY_API_KEY</code> / OIDC) with optional{" "}
+            <code>XAI_API_KEY</code> fallback.
           </footer>
         </div>
 
@@ -1347,45 +1241,102 @@ export default function EditorApp() {
   );
 }
 
-function ImageBackgroundControls({
-  imageDataUrl,
-  fallbackColor,
-  onChange,
+function FlowNav({
+  onBack,
+  onNext,
+  nextLabel = "Continue",
+  hideNext,
 }: {
-  imageDataUrl: string;
-  fallbackColor: string;
-  onChange: (next: Extract<Background, { kind: "image" }>) => void;
+  onBack: () => void;
+  onNext: () => void;
+  nextLabel?: string;
+  hideNext?: boolean;
 }) {
   return (
-    <div className="space-y-3">
-      {imageDataUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={imageDataUrl}
-          alt="Generated background"
-          className="h-28 w-full rounded-xl object-cover"
-        />
-      ) : (
-        <p className="text-sm text-[var(--muted)]">
-          No image yet — use AI (xAI Grok) above to generate a background, or
-          stay on solid/gradient.
-        </p>
+    <div className="flex flex-wrap justify-between gap-3 pt-2">
+      <button
+        type="button"
+        onClick={onBack}
+        className="min-h-[44px] rounded-full px-5 text-sm font-medium text-[var(--ink-soft)] hover:bg-[var(--surface-muted)]"
+      >
+        Back
+      </button>
+      {!hideNext && (
+        <button
+          type="button"
+          onClick={onNext}
+          className="min-h-[44px] rounded-full bg-[var(--accent)] px-6 text-sm font-medium text-white"
+        >
+          {nextLabel}
+        </button>
       )}
-      <label className="flex items-center gap-3 text-sm">
-        <span className="text-[var(--muted)]">Fallback</span>
-        <input
-          type="color"
-          value={fallbackColor}
-          onChange={(e) =>
-            onChange({
-              kind: "image",
-              imageDataUrl,
-              fallbackColor: e.target.value,
-            })
-          }
-          className="h-10 w-14 cursor-pointer rounded-lg border border-[var(--line)] bg-white p-1"
-        />
-      </label>
     </div>
+  );
+}
+
+function ScreenshotStrip({
+  sources,
+  activeId,
+  dragId,
+  onSelect,
+  onRemove,
+  onDragStart,
+  onDropOn,
+}: {
+  sources: SourceImage[];
+  activeId: string | null;
+  dragId: string | null;
+  onSelect: (id: string) => void;
+  onRemove: (id: string) => void;
+  onDragStart: (id: string) => void;
+  onDropOn: (id: string) => void;
+}) {
+  if (sources.length === 0) return null;
+  return (
+    <ul className="flex flex-wrap gap-3">
+      {sources.map((source, index) => {
+        const selected = source.id === activeId;
+        return (
+          <li
+            key={source.id}
+            className={`relative w-[96px] ${dragId === source.id ? "opacity-50" : ""}`}
+            draggable
+            onDragStart={() => onDragStart(source.id)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              onDropOn(source.id);
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => onSelect(source.id)}
+              className={`block w-full overflow-hidden bg-[var(--surface-muted)] ${
+                selected ? "ring-2 ring-[var(--accent)] ring-offset-2" : ""
+              }`}
+              style={{ borderRadius: "0.85rem" }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={source.previewUrl}
+                alt={source.name}
+                className="aspect-[9/16] w-full object-cover"
+              />
+              <span className="block truncate px-1.5 py-1 text-[10px] text-[var(--muted)]">
+                {index + 1}. {source.name}
+              </span>
+            </button>
+            <button
+              type="button"
+              aria-label={`Remove ${source.name}`}
+              onClick={() => onRemove(source.id)}
+              className="absolute top-1 right-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/65 text-sm text-white"
+            >
+              ×
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

@@ -3,7 +3,6 @@ const ITEMS = [
   "Per-screenshot caption overrides inside a multi-shot set",
   "App preview (video) compositing and poster-frame export",
   "In-App Event card / details creative sizes (16:9 and 9:16)",
-  "Localization packs and batch caption translation",
   "Cloud sync for presets (today presets stay in localStorage only)",
   "Official Apple marketing frame packs beyond open community sources",
 ];

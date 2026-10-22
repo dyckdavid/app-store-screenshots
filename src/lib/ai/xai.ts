@@ -5,14 +5,8 @@ import {
   XAI_IMAGE_MODEL,
   XAI_VISION_MODEL,
 } from "./config";
-import type {
-  AiGeneratePurpose,
-  ScreenshotAiSuggestions,
-  SuggestedBackground,
-  SuggestedDevice,
-} from "./types";
-import type { DeviceLayout, TextAlign, TextPosition } from "@/lib/design";
-import type { GradientDirection } from "@/lib/background";
+import { normalizeSuggestions } from "./normalize";
+import type { AiGeneratePurpose, ScreenshotAiSuggestions } from "./types";
 
 export class XaiHttpError extends Error {
   status: number;
@@ -102,15 +96,15 @@ export async function generateImagineImage(options: {
 }
 
 const SUGGESTION_SCHEMA_HINT = `{
-  "headline": string (max 48 chars, App Store marketing),
+  "headline": string (max 48 chars),
   "subtitle": string (max 64 chars),
-  "layout": "single" | "dual-side" | "dual-overlap" | "dual-angled",
-  "device": "iphone" | "ipad" | "mac" | "watch" | "dual" | "header" | "search",
+  "layout": "single" | "dual-side" | "dual-overlap" | "dual-angled" | "foldable-closed" | "foldable-open",
+  "device": "iphone" | "ipad" | "mac" | "watch" | "dual" | "header" | "search" | "foldable",
   "backgroundStyle": either {"kind":"solid","color":"#rrggbb"} or {"kind":"gradient","from":"#rrggbb","to":"#rrggbb","direction":"vertical"|"horizontal"|"diagonal-down"|"diagonal-up"},
   "colorPalette": {"text":"#rrggbb","background":"#rrggbb","accent":"#rrggbb"},
   "textAlign": "left" | "center" | "right",
   "textPosition": "top" | "bottom",
-  "rationale": string (one short sentence)
+  "rationale": string
 }`;
 
 export async function analyzeScreenshotImage(options: {
@@ -130,7 +124,6 @@ export async function analyzeScreenshotImage(options: {
       `Image too large for vision (max ~${caps.visionMaxEdge}px edge / capped payload). Downscale and retry.`,
     );
   }
-  // JPEG/PNG only per xAI image-input docs; client converts WebP before send.
   const header = dataUrl.slice(0, comma + 1).toLowerCase();
   if (
     !header.startsWith("data:image/jpeg;base64,") &&
@@ -140,8 +133,6 @@ export async function analyzeScreenshotImage(options: {
     throw new XaiHttpError(400, "Vision accepts JPEG or PNG only.");
   }
 
-  // Chat Completions + low detail keeps vision under serverless time budgets
-  // (Responses API + reasoning models can exceed 60s on cold paths).
   const userText = `Return ONLY JSON (no markdown) for App Store marketing styling. Schema: ${SUGGESTION_SCHEMA_HINT}`;
 
   const controller = new AbortController();
@@ -198,12 +189,7 @@ export async function analyzeScreenshotImage(options: {
 
   const text = payload?.choices?.[0]?.message?.content?.trim() ?? "";
   if (!text) throw new XaiHttpError(502, "Vision model returned empty text.");
-  const parsed = parseSuggestionsJson(text);
-  return { suggestions: parsed, model: XAI_VISION_MODEL };
-}
-
-function parseSuggestionsJson(raw: string): ScreenshotAiSuggestions {
-  const jsonText = extractJsonObject(raw);
+  const jsonText = extractJsonObject(text);
   let data: unknown;
   try {
     data = JSON.parse(jsonText);
@@ -213,30 +199,11 @@ function parseSuggestionsJson(raw: string): ScreenshotAiSuggestions {
   if (!data || typeof data !== "object") {
     throw new XaiHttpError(502, "Invalid suggestions object.");
   }
-  const o = data as Record<string, unknown>;
   return {
-    headline: clampStr(o.headline, 48) || "Meet your next favorite app",
-    subtitle: clampStr(o.subtitle, 64),
-    layout: asLayout(o.layout),
-    device: asDevice(o.device),
-    backgroundStyle: asBackground(o.backgroundStyle),
-    colorPalette: {
-      text: asHex(
-        (o.colorPalette as Record<string, unknown> | undefined)?.text,
-        "#ffffff",
-      ),
-      background: asHex(
-        (o.colorPalette as Record<string, unknown> | undefined)?.background,
-        "#0a0f14",
-      ),
-      accent: asHex(
-        (o.colorPalette as Record<string, unknown> | undefined)?.accent,
-        "#0f766e",
-      ),
-    },
-    textAlign: asAlign(o.textAlign),
-    textPosition: asPosition(o.textPosition),
-    rationale: clampStr(o.rationale, 160),
+    suggestions: normalizeSuggestions(
+      data as Partial<ScreenshotAiSuggestions> & Record<string, unknown>,
+    ),
+    model: XAI_VISION_MODEL,
   };
 }
 
@@ -247,76 +214,4 @@ function extractJsonObject(raw: string): string {
   const end = trimmed.lastIndexOf("}");
   if (start >= 0 && end > start) return trimmed.slice(start, end + 1);
   throw new XaiHttpError(502, "Could not find JSON object in model output.");
-}
-
-function clampStr(value: unknown, max: number): string {
-  if (typeof value !== "string") return "";
-  return value.trim().slice(0, max);
-}
-
-function asHex(value: unknown, fallback: string): string {
-  if (typeof value !== "string") return fallback;
-  const v = value.trim();
-  return /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/.test(v) ? v : fallback;
-}
-
-function asLayout(value: unknown): DeviceLayout {
-  const allowed: DeviceLayout[] = [
-    "single",
-    "dual-side",
-    "dual-overlap",
-    "dual-angled",
-  ];
-  return allowed.includes(value as DeviceLayout)
-    ? (value as DeviceLayout)
-    : "single";
-}
-
-function asDevice(value: unknown): SuggestedDevice {
-  const allowed: SuggestedDevice[] = [
-    "iphone",
-    "ipad",
-    "mac",
-    "watch",
-    "dual",
-    "header",
-    "search",
-  ];
-  return allowed.includes(value as SuggestedDevice)
-    ? (value as SuggestedDevice)
-    : "iphone";
-}
-
-function asAlign(value: unknown): TextAlign {
-  const allowed: TextAlign[] = ["left", "center", "right"];
-  return allowed.includes(value as TextAlign) ? (value as TextAlign) : "center";
-}
-
-function asPosition(value: unknown): TextPosition {
-  return value === "bottom" ? "bottom" : "top";
-}
-
-function asBackground(value: unknown): SuggestedBackground {
-  if (!value || typeof value !== "object") {
-    return { kind: "solid", color: "#0a0f14" };
-  }
-  const o = value as Record<string, unknown>;
-  if (o.kind === "gradient") {
-    const dirs: GradientDirection[] = [
-      "vertical",
-      "horizontal",
-      "diagonal-down",
-      "diagonal-up",
-    ];
-    const direction = dirs.includes(o.direction as GradientDirection)
-      ? (o.direction as GradientDirection)
-      : "vertical";
-    return {
-      kind: "gradient",
-      from: asHex(o.from, "#0b3d3a"),
-      to: asHex(o.to, "#0a0f14"),
-      direction,
-    };
-  }
-  return { kind: "solid", color: asHex(o.color, "#0a0f14") };
 }
