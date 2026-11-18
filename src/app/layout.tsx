@@ -6,6 +6,11 @@ import {
   Outfit,
   Source_Sans_3,
 } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
+import SiteHeader from "@/components/site/SiteHeader";
+import SiteFooter from "@/components/site/SiteFooter";
+import TestModeRibbon from "@/components/site/TestModeRibbon";
+import { SITE_DESCRIPTION, SITE_NAME, appUrl } from "@/lib/site";
 import "./globals.css";
 
 const outfit = Outfit({
@@ -33,9 +38,24 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ASC Studio — App Store Connect screenshots",
-  description:
-    "Design and export App Store Connect screenshots, dual-device layouts, product page headers, and search creatives — entirely in your browser.",
+  metadataBase: new URL(appUrl()),
+  title: {
+    default: "ASC Studio — App Store Connect screenshots",
+    template: "%s · ASC Studio",
+  },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  openGraph: {
+    type: "website",
+    siteName: SITE_NAME,
+    title: "ASC Studio — App Store Connect screenshots",
+    description: SITE_DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "ASC Studio — App Store Connect screenshots",
+    description: SITE_DESCRIPTION,
+  },
 };
 
 export const viewport: Viewport = {
@@ -60,7 +80,13 @@ export default function RootLayout({
         } as CSSProperties
       }
     >
-      <body className="flex min-h-full flex-col">{children}</body>
+      <body className="flex min-h-full flex-col">
+        <TestModeRibbon />
+        <SiteHeader />
+        {children}
+        <SiteFooter />
+        <Analytics />
+      </body>
     </html>
   );
 }
