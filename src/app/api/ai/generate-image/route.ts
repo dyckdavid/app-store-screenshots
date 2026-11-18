@@ -1,8 +1,5 @@
-import { getRateLimitConfig, isAiConfigured } from "@/lib/ai/config";
-import {
-  clientIpFromRequest,
-  consumeRateLimit,
-} from "@/lib/ai/rate-limit";
+import { getRateLimitConfig } from "@/lib/ai/config";
+import { gateAiRequest } from "@/lib/ai/gate";
 import { AiServiceError, runGenerateImage } from "@/lib/ai/service";
 import type { AiGeneratePurpose } from "@/lib/ai/types";
 
@@ -10,42 +7,30 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 export async function POST(request: Request) {
-  if (!isAiConfigured()) {
-    return Response.json(
-      {
-        error:
-          "AI features are disabled. Set AI_GATEWAY_API_KEY (or OIDC on Vercel) or XAI_API_KEY.",
-      },
-      { status: 503 },
-    );
-  }
-
-  const limited = consumeRateLimit(clientIpFromRequest(request));
-  if (!limited.ok) {
-    return Response.json(
-      { error: limited.error },
-      {
-        status: limited.status,
-        headers: { "Retry-After": String(limited.retryAfterSeconds) },
-      },
-    );
-  }
+  const gate = await gateAiRequest(request, "generate-image");
+  if (!gate.ok) return gate.response;
+  const limited = gate.limited;
+  /** Any non-2xx after the gate gives the quota unit back. */
+  const respond = async (body: unknown, init?: ResponseInit) => {
+    if (init?.status && init.status >= 300) await gate.release();
+    return Response.json(body, init);
+  };
 
   let body: { prompt?: unknown; purpose?: unknown };
   try {
     body = (await request.json()) as { prompt?: unknown; purpose?: unknown };
   } catch {
-    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+    return respond({ error: "Invalid JSON body." }, { status: 400 });
   }
 
   const caps = getRateLimitConfig();
   const prompt =
     typeof body.prompt === "string" ? body.prompt.trim() : "";
   if (!prompt) {
-    return Response.json({ error: "prompt is required." }, { status: 400 });
+    return respond({ error: "prompt is required." }, { status: 400 });
   }
   if (prompt.length > caps.maxPromptLength) {
-    return Response.json(
+    return respond(
       {
         error: `prompt exceeds max length (${caps.maxPromptLength} characters).`,
       },
@@ -58,15 +43,15 @@ export async function POST(request: Request) {
 
   try {
     const result = await runGenerateImage({ prompt, purpose });
-    return Response.json({
+    return respond({
       ...result,
-      remaining: limited.remaining,
+      remaining: limited.remaining, quota: gate.quota,
     });
   } catch (err) {
     if (err instanceof AiServiceError) {
-      return Response.json({ error: err.message }, { status: err.status });
+      return respond({ error: err.message }, { status: err.status });
     }
-    return Response.json(
+    return respond(
       { error: "Unexpected image generation error." },
       { status: 500 },
     );

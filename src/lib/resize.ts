@@ -24,6 +24,7 @@ import { drawTextOverlay, drawGuides } from "./text-overlay";
 import { ensureFontsReady } from "./fonts";
 import type { FitMode } from "./geometry";
 import { drawGraphicLayers, loadImageSource } from "./graphics";
+import { drawWatermark } from "./watermark";
 
 export type { FitMode };
 
@@ -55,6 +56,8 @@ export interface ComposeOptions {
   secondary?: ImageBitmap | null;
   /** Draw snap/alignment guides (preview only; never in exports). */
   guides?: boolean;
+  /** Free-plan export badge, drawn last on the final canvas. */
+  watermark?: boolean;
 }
 
 export async function loadSourceImage(file: File): Promise<SourceImage> {
@@ -143,11 +146,12 @@ export async function composeToCanvas(
   forPreview: boolean,
 ): Promise<HTMLCanvasElement> {
   const opts: Required<
-    Omit<ComposeOptions, "secondary" | "design" | "guides">
+    Omit<ComposeOptions, "secondary" | "design" | "guides" | "watermark">
   > & {
     secondary: ImageBitmap | null;
     design: DesignState;
     guides: boolean;
+    watermark: boolean;
   } =
     typeof options === "string"
       ? {
@@ -157,6 +161,7 @@ export async function composeToCanvas(
           secondary: null,
           design: DEFAULT_DESIGN,
           guides: false,
+          watermark: false,
         }
       : {
           mode: options.mode,
@@ -165,6 +170,7 @@ export async function composeToCanvas(
           secondary: options.secondary ?? null,
           design: options.design ?? DEFAULT_DESIGN,
           guides: options.guides ?? false,
+          watermark: options.watermark ?? false,
         };
 
   const design = opts.design;
@@ -269,6 +275,10 @@ export async function composeToCanvas(
     drawGuides(ctx, size.width, size.height, design.text.insetPercent);
   }
 
+  if (opts.watermark) {
+    drawWatermark(ctx, size.width, size.height);
+  }
+
   return canvas;
 }
 
@@ -279,6 +289,8 @@ export interface GenerateAllOptions {
   background?: Background;
   frames?: boolean;
   design?: DesignState;
+  /** Free-plan exports carry the badge (see shouldWatermark). */
+  watermark?: boolean;
   onProgress?: (done: number, total: number) => void;
 }
 
@@ -292,6 +304,7 @@ export async function generateAll(
     background = DEFAULT_BACKGROUND,
     frames = false,
     design = DEFAULT_DESIGN,
+    watermark = false,
     onProgress,
   } = options;
 
@@ -333,6 +346,7 @@ export async function generateAll(
         design,
         secondary: secondary.bitmap,
         guides: false,
+        watermark,
       });
       const filename = `${fileStem(size, source.name)}.png`;
       const previewUrl = URL.createObjectURL(blob);

@@ -46,6 +46,7 @@ import {
   applyPreset,
   deletePreset,
   loadPresets,
+  savePresets,
   upsertPreset,
   type SavedPreset,
 } from "@/lib/presets";
@@ -55,6 +56,11 @@ import LivePreview from "./editor/LivePreview";
 import ComingSoon from "./editor/ComingSoon";
 import ReviewPanel from "./editor/ReviewPanel";
 import { FLOW_STEPS, type FlowStep } from "./editor/flow";
+import PaywallModal, { openPaywall } from "./editor/PaywallModal";
+import CloudPresets from "./editor/CloudPresets";
+import { useEntitlements } from "@/lib/billing/use-entitlements";
+import { shouldWatermark } from "@/lib/billing/plans";
+import { track } from "@/lib/analytics";
 
 function isAcceptedFile(file: File): boolean {
   const t = file.type.toLowerCase();
@@ -90,6 +96,10 @@ export default function EditorApp() {
   const [analyzeToken, setAnalyzeToken] = useState(0);
   const [dragId, setDragId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { data: me } = useEntitlements();
+  // Fail closed: unknown / anonymous / free → watermark.
+  const plan = me?.plan ?? "free";
+  const watermark = shouldWatermark(plan);
 
   const selectedSizes = useMemo(
     () => sizesForPlatforms(platforms),
@@ -177,6 +187,7 @@ export default function EditorApp() {
         clearResults();
         setStep("devices");
         setAnalyzeToken((n) => n + 1);
+        track("upload", { count: loaded.length });
       } catch {
         setError("Could not read one or more images. Try a different file.");
       }
@@ -310,15 +321,21 @@ export default function EditorApp() {
         background: design.background,
         frames: design.frames,
         design,
+        watermark,
         onProgress: (done, total) => setProgress({ done, total }),
       });
       setResults(generated);
+      track("export", {
+        count: generated.length,
+        plan,
+        watermark,
+      });
     } catch {
       setError("Export failed. Try fewer images or smaller sources.");
     } finally {
       setBusy(false);
     }
-  }, [sources, selectedSizes, design, jobCount, clearResults]);
+  }, [sources, selectedSizes, design, jobCount, clearResults, watermark, plan]);
 
   const saveCurrentPreset = useCallback(() => {
     const name = presetName.trim() || `Preset ${presets.length + 1}`;
@@ -360,6 +377,7 @@ export default function EditorApp() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-4 py-6 sm:px-6 lg:py-8">
+      <PaywallModal />
       <header className="relative overflow-hidden rounded-[1.75rem] border border-[var(--line)] bg-[var(--surface)] px-6 py-7 sm:px-10 sm:py-9">
         <div
           className="pointer-events-none absolute inset-0 opacity-90"
@@ -1009,6 +1027,16 @@ export default function EditorApp() {
                     Save
                   </button>
                 </div>
+                <CloudPresets
+                  localPresets={presets}
+                  onPulled={(cloud) => {
+                    const byId = new Map(presets.map((p) => [p.id, p]));
+                    for (const c of cloud) byId.set(c.id, c);
+                    const merged = [...byId.values()];
+                    savePresets(merged);
+                    setPresets(merged);
+                  }}
+                />
                 {presets.length === 0 ? (
                   <p className="text-sm text-[var(--muted)]">
                     No saved presets yet (stored in localStorage).
@@ -1087,6 +1115,21 @@ export default function EditorApp() {
                   PNGs.
                 </p>
               </div>
+
+              {watermark && (
+                <div className="flex flex-col gap-3 rounded-xl border border-[var(--accent)]/30 bg-[var(--accent)]/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-[var(--ink-soft)]">
+                    Free exports include a small “Made with ASC Studio” badge in the corner.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => openPaywall("watermark")}
+                    className="min-h-[40px] shrink-0 rounded-full bg-[var(--accent)] px-4 text-sm font-medium text-white"
+                  >
+                    Remove watermark — go Pro
+                  </button>
+                </div>
+              )}
 
               {selectedSizes.length > 0 && (
                 <label className="block space-y-1.5">

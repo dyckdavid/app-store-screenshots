@@ -10,6 +10,23 @@ import type {
 import type { AiGeneratePurpose } from "./types";
 import type { DeviceLayout } from "@/lib/design";
 
+/**
+ * Surface auth/quota denials from the gated AI routes as the editor paywall.
+ * 401 → sign in; 402 quota_exceeded → upgrade.
+ */
+function notifyAccessDenied(status: number, data: { code?: string }): void {
+  if (typeof window === "undefined") return;
+  const reason =
+    status === 401
+      ? "ai_signin"
+      : status === 402 && data.code === "quota_exceeded"
+        ? "ai_quota"
+        : null;
+  if (reason) {
+    window.dispatchEvent(new CustomEvent("asc:paywall", { detail: reason }));
+  }
+}
+
 const DISABLED_STATUS: AiStatusResponse = {
   enabled: false,
   provider: "none",
@@ -65,6 +82,7 @@ export async function generateAiImage(options: {
     model?: string;
   };
   if (!res.ok || !data.dataUrl) {
+    notifyAccessDenied(res.status, data as { code?: string });
     throw new Error(data.error || `Generate failed (${res.status})`);
   }
   return {
@@ -88,6 +106,7 @@ export async function analyzeScreenshot(options: {
     model?: string;
   };
   if (!res.ok || !data.suggestions) {
+    notifyAccessDenied(res.status, data as { code?: string });
     throw new Error(data.error || `Analyze failed (${res.status})`);
   }
   return {
@@ -111,6 +130,7 @@ export async function generateLocalizedCopy(options: {
     error?: string;
   };
   if (!res.ok || !data.locales) {
+    notifyAccessDenied(res.status, data as { code?: string });
     throw new Error(data.error || `Copy failed (${res.status})`);
   }
   return data;
@@ -138,6 +158,7 @@ export async function pickBestLayout(options: {
     model?: string;
   };
   if (!res.ok || !data.layout) {
+    notifyAccessDenied(res.status, data as { code?: string });
     throw new Error(data.error || `Layout pick failed (${res.status})`);
   }
   return {
@@ -165,6 +186,7 @@ export async function reviewComposition(options: {
     model?: string;
   };
   if (!res.ok || !data.review) {
+    notifyAccessDenied(res.status, data as { code?: string });
     throw new Error(data.error || `Review failed (${res.status})`);
   }
   return {
