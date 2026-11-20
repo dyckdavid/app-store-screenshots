@@ -11,6 +11,8 @@ import { findProduct } from "@/lib/billing/catalog";
 import { getUserPlan } from "@/lib/billing/entitlements";
 import { isRowActive } from "@/lib/billing/entitlement-rules";
 import { getQuotaSnapshot } from "@/lib/billing/quota";
+import { describePlan } from "@/lib/billing/plan-copy";
+import { stripeMode } from "@/lib/billing/stripe-mode";
 import * as repo from "@/lib/billing/repo";
 
 export const dynamic = "force-dynamic";
@@ -64,7 +66,8 @@ export default async function AccountPage({
     repo.getStripeCustomerId(user.id),
   ]);
 
-  const sub = details.find((d) => d.source === "subscription" && isRowActive(d));
+  const activeRows = details.filter((d) => isRowActive(d));
+  const billingEnabled = stripeMode() !== "unconfigured";
   const usagePct = quota.limit > 0 ? Math.min(100, Math.round((quota.used / quota.limit) * 100)) : 100;
   const card = "rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface)] p-5";
 
@@ -94,17 +97,7 @@ export default async function AccountPage({
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Plan</p>
             <p className="mt-1 font-[family-name:var(--font-display)] text-2xl text-[var(--ink)]">{PLAN_LABEL[plan]}</p>
-            {sub ? (
-              <p className="mt-1 text-sm text-[var(--muted)]">
-                {sub.cancelAtPeriodEnd || sub.status === "canceled"
-                  ? `Cancels on ${fmtDate(sub.validUntil)}`
-                  : `Renews on ${fmtDate(sub.validUntil)}`}
-              </p>
-            ) : plan === "lifetime" ? (
-              <p className="mt-1 text-sm text-[var(--muted)]">Lifetime access — no renewals.</p>
-            ) : (
-              <p className="mt-1 text-sm text-[var(--muted)]">Exports include a watermark.</p>
-            )}
+            <p className="mt-1 text-sm text-[var(--muted)]">{describePlan(plan, activeRows)}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {plan === "free" ? (
@@ -115,7 +108,7 @@ export default async function AccountPage({
                 Upgrade
               </Link>
             ) : null}
-            {customerId ? <ManageBillingButton /> : null}
+            {customerId && billingEnabled ? <ManageBillingButton /> : null}
           </div>
         </div>
       </section>

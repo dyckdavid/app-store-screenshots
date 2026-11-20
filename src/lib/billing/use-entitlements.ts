@@ -8,6 +8,8 @@ export interface MeResponse {
   signedIn: boolean;
   user: { email: string | null; name: string | null } | null;
   authConfigured: boolean;
+  /** Stripe checkout available on this deployment. */
+  billingEnabled: boolean;
   plan: Plan;
   limits: PlanLimits;
   usage: { aiUsed: number; aiLimit: number; aiCredits: number; period: "day" | "month" } | null;
@@ -18,6 +20,7 @@ const ANON: MeResponse = {
   signedIn: false,
   user: null,
   authConfigured: false,
+  billingEnabled: false,
   plan: "free",
   limits: getPlanLimits("free"),
   usage: null,
