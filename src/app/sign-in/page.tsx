@@ -22,10 +22,15 @@ export const metadata: Metadata = {
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; error?: string }>;
 }) {
-  const { next: rawNext } = await searchParams;
-  const next = safeNextPath(rawNext);
+  const { next: rawNext, error } = await searchParams;
+  const next = safeNextPath(rawNext, "/studio");
+  const initialError = error
+    ? error === "oauth"
+      ? "Google sign-in didn't complete. Try again or use an email code."
+      : "Sign-in didn't complete. Please try again."
+    : null;
 
   if (!isAuthConfigured()) {
     return (
@@ -49,7 +54,7 @@ export default async function SignInPage({
           No password needed. New here? Signing in creates your free account.
         </p>
         <div className="mt-6">
-          <SignInForm next={next} appleEnabled={isAppleSignInEnabled()} />
+          <SignInForm next={next} appleEnabled={isAppleSignInEnabled()} initialError={initialError} />
         </div>
         <p className="mt-6 text-xs text-[var(--muted)]">
           By continuing you agree to the <Link className="underline" href="/terms">Terms</Link>{" "}

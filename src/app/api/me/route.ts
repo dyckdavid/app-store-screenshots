@@ -11,12 +11,14 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const authConfigured = isAuthConfigured();
   const user = authConfigured ? await getSessionUser() : null;
-  const headers = { "Cache-Control": "private, no-store" };
+  const headers = { "Cache-Control": "private, no-store", Vary: "Cookie" };
+  const userInfo = user ? { email: user.email, name: user.name } : null;
 
   if (!user || !isDbConfigured()) {
     return Response.json(
       {
         signedIn: Boolean(user),
+        user: userInfo,
         authConfigured,
         plan: "free",
         limits: getPlanLimits("free"),
@@ -35,6 +37,7 @@ export async function GET() {
     return Response.json(
       {
         signedIn: true,
+        user: userInfo,
         authConfigured,
         plan,
         limits,
@@ -53,6 +56,7 @@ export async function GET() {
     return Response.json(
       {
         signedIn: true,
+        user: userInfo,
         authConfigured,
         plan: "free",
         limits: getPlanLimits("free"),

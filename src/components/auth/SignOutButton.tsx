@@ -1,28 +1,32 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { authClient } from "@/lib/auth/client";
+import { signOut } from "@/lib/auth/session-client";
 
-export default function SignOutButton() {
-  const router = useRouter();
+export default function SignOutButton({
+  everywhere = false,
+  className,
+  children,
+}: {
+  everywhere?: boolean;
+  className?: string;
+  children?: React.ReactNode;
+}) {
   const [busy, setBusy] = useState(false);
   return (
     <button
       type="button"
       disabled={busy}
-      onClick={async () => {
+      onClick={() => {
         setBusy(true);
-        try {
-          await authClient.signOut();
-        } finally {
-          router.replace("/");
-          router.refresh();
-        }
+        void signOut({ everywhere });
       }}
-      className="min-h-[40px] rounded-full border border-[var(--line)] bg-white px-4 text-sm text-[var(--ink)] disabled:opacity-50"
+      className={
+        className ??
+        "min-h-[40px] rounded-full border border-[var(--line)] bg-white px-4 text-sm text-[var(--ink)] disabled:opacity-50"
+      }
     >
-      {busy ? "Signing out…" : "Sign out"}
+      {busy ? "Signing out…" : (children ?? (everywhere ? "Sign out everywhere" : "Sign out"))}
     </button>
   );
 }

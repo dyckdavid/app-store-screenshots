@@ -5,6 +5,8 @@ import { getDb, isDbConfigured } from "@/db/client";
 import { prices } from "@/db/schema";
 import { findPrice, isPriceAvailable } from "@/lib/billing/catalog";
 import * as repo from "@/lib/billing/repo";
+import { getEntitlements } from "@/lib/billing/entitlements";
+import { redundantPurchase } from "@/lib/billing/entitlement-rules";
 import { requestOrigin } from "@/lib/billing/origin";
 import { stripeMode } from "@/lib/billing/stripe-mode";
 
@@ -44,6 +46,23 @@ export async function POST(request: Request) {
   const hit = findPrice(priceKey);
   if (!hit || !isPriceAvailable(priceKey)) {
     return Response.json({ error: "Unknown price." }, { status: 400 });
+  }
+
+  const redundant = redundantPurchase(
+    await getEntitlements(auth.user.id),
+    hit.product.kind,
+    hit.product.grants,
+  );
+  if (redundant) {
+    const messages = {
+      already_subscribed: "You already have Pro. Switch between monthly and yearly in Manage billing.",
+      already_lifetime: "You already have Lifetime access — no need to buy again.",
+      already_owned: "You already own this. Find it in your library.",
+    } as const;
+    return Response.json(
+      { error: messages[redundant], code: redundant, manageUrl: "/account" },
+      { status: 409 },
+    );
   }
 
   try {
