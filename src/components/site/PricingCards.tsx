@@ -107,6 +107,7 @@ export default function PricingCards({ compact = false }: { compact?: boolean })
   }
 
   const currentPlan = data?.plan ?? "free";
+  const checkoutClosed = data !== null && data.billingEnabled === false;
 
   return (
     <div>
@@ -157,6 +158,10 @@ export default function PricingCards({ compact = false }: { compact?: boolean })
                   >
                     Your current plan
                   </Link>
+                ) : tier.priceKey && checkoutClosed ? (
+                  <div className="flex min-h-[44px] items-center justify-center rounded-full border border-dashed border-[var(--line)] text-sm text-[var(--muted)]">
+                    Checkout opens soon
+                  </div>
                 ) : tier.priceKey ? (
                   <>
                     <button

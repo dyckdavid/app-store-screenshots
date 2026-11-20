@@ -1,6 +1,7 @@
 import { isAuthConfigured } from "@/lib/auth/config";
 import { getSessionUser } from "@/lib/auth/server";
 import { isDbConfigured } from "@/db/client";
+import { stripeMode } from "@/lib/billing/stripe-mode";
 import { getUserPlan } from "@/lib/billing/entitlements";
 import { getPlanLimits } from "@/lib/billing/plans";
 import { getQuotaSnapshot } from "@/lib/billing/quota";
@@ -13,6 +14,7 @@ export async function GET() {
   const user = authConfigured ? await getSessionUser() : null;
   const headers = { "Cache-Control": "private, no-store", Vary: "Cookie" };
   const userInfo = user ? { email: user.email, name: user.name } : null;
+  const billingEnabled = stripeMode() !== "unconfigured" && isDbConfigured();
 
   if (!user || !isDbConfigured()) {
     return Response.json(
@@ -20,6 +22,7 @@ export async function GET() {
         signedIn: Boolean(user),
         user: userInfo,
         authConfigured,
+        billingEnabled,
         plan: "free",
         limits: getPlanLimits("free"),
         usage: null,
@@ -39,6 +42,7 @@ export async function GET() {
         signedIn: true,
         user: userInfo,
         authConfigured,
+        billingEnabled,
         plan,
         limits,
         pastDue,
@@ -58,6 +62,7 @@ export async function GET() {
         signedIn: true,
         user: userInfo,
         authConfigured,
+        billingEnabled,
         plan: "free",
         limits: getPlanLimits("free"),
         usage: null,
