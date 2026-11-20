@@ -8,17 +8,30 @@
     "start": "next start --port 43123",
     "lint": "eslint",
     "test": "vitest run",
-    "prebuild": "node scripts/fetch-frames.mjs"
+    "prebuild": "node scripts/fetch-frames.mjs",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:seed": "tsx scripts/seed.ts",
+    "stripe:bootstrap": "tsx scripts/stripe-bootstrap.ts",
+    "asset:upload": "tsx scripts/upload-asset.ts"
   },
   "dependencies": {
     "@ai-sdk/gateway": "^4.0.121",
+    "@neon/auth": "^0.8.2",
+    "@neondatabase/serverless": "^1.2.1",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/blob": "^2.9.0",
     "ai": "^7.0.148",
+    "drizzle-orm": "^0.45.4",
     "fast-png": "^8.0.0",
     "file-saver": "^2.0.5",
     "jszip": "^3.10.2",
     "next": "16.3.8",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "server-only": "^0.0.1",
+    "stripe": "^23.1.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -27,9 +40,11 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "drizzle-kit": "^0.31.11",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^3.2.7"
   }

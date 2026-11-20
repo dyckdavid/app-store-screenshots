@@ -1,8 +1,4 @@
-import { isAiConfigured } from "@/lib/ai/config";
-import {
-  clientIpFromRequest,
-  consumeRateLimit,
-} from "@/lib/ai/rate-limit";
+import { gateAiRequest } from "@/lib/ai/gate";
 import { AiServiceError, runReviewOutput } from "@/lib/ai/service";
 import type { DeviceLayout } from "@/lib/design";
 
@@ -19,26 +15,14 @@ const LAYOUTS: DeviceLayout[] = [
 ];
 
 export async function POST(request: Request) {
-  if (!isAiConfigured()) {
-    return Response.json(
-      {
-        error:
-          "AI features are disabled. Set AI_GATEWAY_API_KEY (or OIDC on Vercel) or XAI_API_KEY.",
-      },
-      { status: 503 },
-    );
-  }
-
-  const limited = consumeRateLimit(clientIpFromRequest(request));
-  if (!limited.ok) {
-    return Response.json(
-      { error: limited.error },
-      {
-        status: limited.status,
-        headers: { "Retry-After": String(limited.retryAfterSeconds) },
-      },
-    );
-  }
+  const gate = await gateAiRequest(request, "review");
+  if (!gate.ok) return gate.response;
+  const limited = gate.limited;
+  /** Any non-2xx after the gate gives the quota unit back. */
+  const respond = async (body: unknown, init?: ResponseInit) => {
+    if (init?.status && init.status >= 300) await gate.release();
+    return Response.json(body, init);
+  };
 
   let body: {
     imageDataUrl?: unknown;
@@ -49,13 +33,13 @@ export async function POST(request: Request) {
   try {
     body = (await request.json()) as typeof body;
   } catch {
-    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+    return respond({ error: "Invalid JSON body." }, { status: 400 });
   }
 
   const imageDataUrl =
     typeof body.imageDataUrl === "string" ? body.imageDataUrl : "";
   if (!imageDataUrl) {
-    return Response.json(
+    return respond(
       { error: "imageDataUrl is required." },
       { status: 400 },
     );
@@ -74,12 +58,12 @@ export async function POST(request: Request) {
       subtitle: typeof body.subtitle === "string" ? body.subtitle : undefined,
       layout,
     });
-    return Response.json({ ...result, remaining: limited.remaining });
+    return respond({ ...result, remaining: limited.remaining, quota: gate.quota });
   } catch (err) {
     if (err instanceof AiServiceError) {
-      return Response.json({ error: err.message }, { status: err.status });
+      return respond({ error: err.message }, { status: err.status });
     }
-    return Response.json(
+    return respond(
       { error: "Unexpected review error." },
       { status: 500 },
     );
