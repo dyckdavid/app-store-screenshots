@@ -18,7 +18,7 @@ export default function SiteHeader() {
     <header className="mx-auto flex w-full max-w-[1400px] items-center justify-between gap-3 px-4 pt-4 sm:px-6">
       <Link
         href="/"
-        className="font-[family-name:var(--font-display)] text-xl tracking-tight text-[var(--ink)]"
+        className="whitespace-nowrap font-[family-name:var(--font-display)] text-xl tracking-tight text-[var(--ink)]"
       >
         ASC Studio
       </Link>
@@ -27,7 +27,7 @@ export default function SiteHeader() {
           <Link
             key={item.href}
             href={item.href}
-            className={`rounded-full px-3 py-2 ${
+            className={`${item.href === "/support" ? "hidden sm:inline-block" : ""} whitespace-nowrap rounded-full px-2.5 py-2 sm:px-3 ${
               pathname?.startsWith(item.href)
                 ? "bg-[var(--surface-muted)] text-[var(--ink)]"
                 : "text-[var(--muted)] hover:text-[var(--ink)]"
@@ -39,14 +39,14 @@ export default function SiteHeader() {
         {data?.signedIn ? (
           <Link
             href="/account"
-            className="ml-1 rounded-full border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-[var(--ink)]"
+            className="ml-1 whitespace-nowrap rounded-full border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-[var(--ink)]"
           >
             {data.plan === "free" ? "Account" : `Account · ${data.plan === "pro" ? "Pro" : "Lifetime"}`}
           </Link>
         ) : (
           <Link
             href={`/sign-in?next=${encodeURIComponent(pathname || "/studio")}`}
-            className="ml-1 rounded-full bg-[var(--accent)] px-4 py-2 font-medium text-white"
+            className="ml-1 whitespace-nowrap rounded-full bg-[var(--accent)] px-4 py-2 font-medium text-white"
           >
             Sign in
           </Link>

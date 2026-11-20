@@ -1,6 +1,6 @@
 import type { Background } from "./background";
 import { DEFAULT_BACKGROUND } from "./background";
-import type { FitMode } from "./resize";
+import type { FitMode } from "./geometry";
 import type { FontWeight } from "./fonts";
 import type { GraphicLayer } from "./graphics";
 

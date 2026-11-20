@@ -16,11 +16,11 @@ const FEATURES = [
   },
   {
     title: "Real device frames",
-    body: "iPhone 17 Pro Max, iPad Pro, MacBook bezels, and a foldable iPhone Duo frame. Screenshots cover-fill the screen, then scale to the canvas.",
+    body: "iPhone 17 Pro Max, iPad Pro, and MacBook bezels, picked automatically from each screenshot's shape — never cropped into the wrong device.",
   },
   {
-    title: "Dual-iPhone layouts",
-    body: "Side-by-side, overlapping, and tilted pairs across every iPhone size, each device showing its own screenshot.",
+    title: "Six proven layouts",
+    body: "Hero, classic, caption-below, tilted, duo, and frameless — captions and devices never overlap, at any size.",
   },
   {
     title: "Headers & search creatives",
@@ -32,15 +32,15 @@ const FEATURES = [
   },
   {
     title: "AI review & copy",
-    body: "Multilingual headlines (incl. Spanish), background suggestions, auto layout pick, and a scorecard with one-click fixes.",
+    body: "Write a headline for any screenshot with one click, or match the whole look to your app's colors.",
   },
 ];
 
 const STEPS = [
   ["Upload", "Drop your raw simulator or device screenshots and drag to reorder."],
-  ["Devices", "Pick single, dual, tilted, or foldable layouts and your export targets."],
-  ["Style", "Captions, fonts, templates, backgrounds — preview live at real size."],
-  ["AI review", "Optional: get copy in 8 languages and a scorecard with fixes."],
+  ["Caption", "Write one short benefit headline per screenshot — or let AI draft it."],
+  ["Preview", "See the whole set side by side, exactly as it will export."],
+  ["Pick a look", "Choose a layout and a background; “From your app” matches your brand colors."],
   ["Export", "Batch-export every size as a ZIP, foldered by platform."],
 ];
 

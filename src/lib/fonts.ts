@@ -18,6 +18,19 @@ export interface FontOption {
 
 export const FONT_OPTIONS: FontOption[] = [
   {
+    id: "inter",
+    label: "Inter",
+    family: "var(--font-inter), Inter, sans-serif",
+    kind: "google",
+    cssVar: "--font-inter",
+  },
+  {
+    id: "system",
+    label: "System (SF Pro on Apple)",
+    family: 'system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif',
+    kind: "websafe",
+  },
+  {
     id: "outfit",
     label: "Outfit",
     family: "var(--font-outfit), Outfit, sans-serif",
@@ -96,7 +109,9 @@ export function canvasFontFamily(id: string): string {
     const resolved = getComputedStyle(document.documentElement)
       .getPropertyValue(opt.cssVar)
       .trim();
-    if (resolved) return `${resolved}, ${opt.label}, sans-serif`;
+    // Quote the label: unquoted names with digits ("Source Sans 3") make the
+    // whole canvas font string invalid, and canvas silently keeps the old font.
+    if (resolved) return `${resolved}, "${opt.label}", sans-serif`;
   }
   return `"${opt.label}", sans-serif`;
 }

@@ -6,6 +6,8 @@
  * enforced Pro value lives in AI quotas and cloud presets.
  */
 
+import { canvasFontFamily } from "./fonts";
+
 export const WATERMARK_TEXT =
   process.env.NEXT_PUBLIC_WATERMARK_TEXT || "Made with ASC Studio · ascstudio.app";
 
@@ -27,9 +29,10 @@ export function watermarkBadgeRect(
   canvasWidth: number,
   canvasHeight: number,
   measure: (fontSize: number) => number = (fs) => estimateTextWidth(WATERMARK_TEXT, fs),
+  minFontSize = 12,
 ): BadgeRect {
   const short = Math.min(canvasWidth, canvasHeight);
-  const fontSize = Math.max(12, Math.round(short * 0.022));
+  const fontSize = Math.max(minFontSize, Math.round(short * 0.022));
   const paddingX = Math.round(fontSize * 0.8);
   const height = Math.round(fontSize * 2);
   const margin = Math.max(8, Math.round(short * 0.025));
@@ -56,14 +59,22 @@ export function drawWatermark(
   canvasWidth: number,
   canvasHeight: number,
   text = WATERMARK_TEXT,
+  /** Scaled previews pass their scale so the badge matches the export. */
+  scale = 1,
 ): BadgeRect {
   ctx.save();
-  const fontFor = (fs: number) =>
-    `600 ${fs}px var(--font-source-sans), "Segoe UI", system-ui, sans-serif`;
-  const rect = watermarkBadgeRect(canvasWidth, canvasHeight, (fs) => {
-    ctx.font = fontFor(fs);
-    return ctx.measureText(text).width;
-  });
+  // Canvas can't resolve CSS variables; resolve the real family name.
+  const family = canvasFontFamily("source-sans");
+  const fontFor = (fs: number) => `600 ${fs}px ${family}`;
+  const rect = watermarkBadgeRect(
+    canvasWidth,
+    canvasHeight,
+    (fs) => {
+      ctx.font = fontFor(fs);
+      return ctx.measureText(text).width;
+    },
+    Math.max(4, 12 * scale),
+  );
   ctx.font = fontFor(rect.fontSize);
   ctx.fillStyle = "rgba(18, 32, 42, 0.62)";
   ctx.beginPath();

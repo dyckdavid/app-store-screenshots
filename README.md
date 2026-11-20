@@ -1,35 +1,25 @@
 # ASC Studio
 
-Browser tool that designs and exports **App Store Connect** marketing assets for **iPhone**, **iPad**, **Mac**, **Apple Watch**, plus **product page headers**, **search results creatives**, **dual-iPhone** layouts (all iPhone ASC sizes), and an **MIT foldable iPhone Duo** frame.
+Browser tool that designs and exports **App Store Connect** screenshots for **iPhone**, **iPad**, **Mac**, **Apple Watch**, plus **product page headers** and **search results creatives**.
 
-Upload PNG/JPEG/WebP screenshots → guided flow (upload → devices → style → AI review → export) → export individual PNGs or a ZIP. Composition runs client-side. Optional AI (Vercel AI Gateway + AI SDK, with direct xAI fallback) calls only from Next.js route handlers.
+Upload PNG/JPEG/WebP screenshots → write one headline per screenshot → pick a layout and background → download a ZIP with every selected ASC size. Composition runs client-side on canvas. Optional AI (Vercel AI Gateway + AI SDK, with direct xAI fallback) runs only in Next.js route handlers.
 
-## Guided workflow
+## Studio (`/studio`)
 
-1. **Upload** — drop one or more screenshots; drag thumbs to reorder. Dual layouts pair each shot with the next.
-2. **Devices** — pick single / side-by-side / overlap / tilted / foldable open|closed, and ASC export targets.
-3. **Style** — captions, fonts, templates, backgrounds, presets (`localStorage`).
-4. **AI review** — multilingual copy (incl. Spanish), background/color suggestions, auto layout pick, scorecard with one-click fixes.
-5. **Export** — batch opaque PNGs at exact ASC pixel sizes (ZIP).
+- **Per-screenshot captions.** Each screenshot has its own headline + subtitle (example captions are flagged until you replace them; AI can draft them).
+- **Six layouts:** hero (phone rises from the bottom edge), classic, caption below, tilted, duo (this shot in front, the next one behind), frameless card.
+- **Backgrounds:** curated themes plus **From your app** — a gradient built from the first screenshot's dominant color, with text color chosen for contrast.
+- **Live set preview** of all screenshots side by side at any selected size; the export is the same renderer at full resolution.
+- **Exports:** opaque RGB PNGs at exact ASC sizes, foldered by display size and numbered in order. Default targets: iPhone 6.9″ + 6.5″ portrait.
 
-## Frame compose rule (do not regress)
+## Rendering rules (do not regress)
 
-With device frames on:
+1. **Caption and devices never overlap.** `src/lib/studio/layout.ts` splits every canvas into a caption region and a device region (stacked on tall canvases, side-by-side when a wide canvas holds an upright device). All sizes are proportional to the canvas — no fixed pixel font sizes.
+2. **Device follows the screenshot, not the canvas.** A phone-shaped capture always gets the iPhone bezel (in its own orientation), 4:3 gets iPad, 16:10 landscape gets the MacBook; a phone screenshot is never cropped into an iPad screen.
+3. **Frame compose:** cover-fill the screenshot into the device screen, **then** scale the framed device into its layout slot (`src/lib/frames.ts`, `src/lib/geometry.ts`).
+4. Apple Watch exports are the full-bleed screen only (no bezel or caption), per Apple's guidance.
 
-1. **Cover-fill** the screenshot into the device screen / mask rect (never letterbox inside the screen).
-2. **Then** scale the whole framed composition (background + screen + PNG bezel) to the exact ASC canvas using contain or cover.
-
-Covered by unit tests in `src/lib/geometry.test.ts`.
-
-## Dual iPhone layouts
-
-First-class across **all** iPhone ASC sizes (6.9″ / 6.5″ / 6.3″ / 6.1″, portrait + landscape), plus the Dual platform target. Variants: side-by-side, overlapping, tilted. Each device uses its own screenshot from the ordered set.
-
-## Foldable iPhone Duo frame
-
-**Added** from [bunlongheng/frames](https://github.com/bunlongheng/frames) (**MIT**): closed, open-portrait, and open-landscape PNG bezels under `public/frames/iphone-duo/`.
-
-**Why this source:** Hoverify and Screeny Duo PNGs disallow redistribution as an asset pack; jal-co/iphone-duo ships Apple’s GLB (not openly licensed for bezel redistribution). bunlongheng/frames is MIT and already used for MacBook.
+Covered by `src/lib/studio/layout.test.ts` (every ASC size × layout), `model.test.ts` (contrast of every theme, auto palette), and `src/lib/geometry.test.ts`.
 
 ## Apple specifications (sources)
 
@@ -54,7 +44,6 @@ Images must be JPEG/JPG/PNG **without alpha**; this tool always encodes opaque R
 Real PNG bezels from open community sources (see [NOTICE](./NOTICE)):
 
 - **iPhone 17 Pro Max** Deep Blue (`jonnyjackson26/device-frames-media`)
-- **iPhone Duo** foldable closed/open (MIT `bunlongheng/frames`)
 - iPad Pro 13" / 11" Space Black
 - MacBook (MIT `bunlongheng/frames`)
 - Apple Watch: procedural bezel fallback
@@ -104,7 +93,7 @@ Monetization variables (`DATABASE_URL`, `NEON_AUTH_*`, `STRIPE_*`, `BLOB_READ_WR
 | Feature | Gateway model id | Notes |
 | --- | --- | --- |
 | Background / graphic generation | `spacexai/grok-imagine-image` | ~$0.02 / image (xAI Imagine) |
-| Vision / review / layout / copy | `spacexai/grok-build-0.1` | Cheapest vision-capable Grok text model |
+| Vision / review / layout / copy | `spacexai/grok-4.3` | Vision-capable Grok text model (cheaper than 4.7) |
 
 Integration: Vercel AI SDK (`ai` + plain `provider/model` strings). Server routes:
 
@@ -209,4 +198,4 @@ Owners see it under `/account/library`.
 
 ## Coming soon
 
-Listed in the UI. Includes freeform canvas dragging, per-shot caption overrides, app-preview video, In-App Event creatives, cloud preset sync, and additional official marketing frame packs.
+Localized caption sets (export per language), app-preview video, In-App Event creatives, and image backgrounds from AI generation (the `/api/ai/generate-image` route still exists; the new studio doesn't expose it yet).

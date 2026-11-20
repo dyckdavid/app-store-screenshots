@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import type { Metadata, Viewport } from "next";
 import {
   Fraunces,
+  Inter,
   JetBrains_Mono,
   Outfit,
   Source_Sans_3,
@@ -12,6 +13,12 @@ import SiteFooter from "@/components/site/SiteFooter";
 import TestModeRibbon from "@/components/site/TestModeRibbon";
 import { SITE_DESCRIPTION, SITE_NAME, appUrl } from "@/lib/site";
 import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
 
 const outfit = Outfit({
   subsets: ["latin"],
@@ -72,7 +79,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`h-full antialiased ${outfit.variable} ${fraunces.variable} ${sourceSans.variable} ${jetbrains.variable}`}
+      className={`h-full antialiased ${inter.variable} ${outfit.variable} ${fraunces.variable} ${sourceSans.variable} ${jetbrains.variable}`}
       style={
         {
           "--font-ui": "var(--font-source-sans)",

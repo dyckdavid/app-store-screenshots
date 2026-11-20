@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
-import EditorApp from "@/components/EditorApp";
+import StudioLoader from "@/components/studio/StudioLoader";
 
 export const metadata: Metadata = {
-  title: "Editor",
+  title: "Studio",
   description:
-    "Upload screenshots, pick devices and layouts, style captions, and export exact App Store Connect sizes.",
+    "Upload screenshots, write a headline for each, pick a look, and export every App Store Connect size at once.",
   alternates: { canonical: "/studio" },
 };
 
 export default function StudioPage() {
   return (
     <main className="flex-1">
-      <EditorApp />
+      <StudioLoader />
     </main>
   );
 }
