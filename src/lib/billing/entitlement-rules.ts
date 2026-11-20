@@ -75,3 +75,27 @@ export function statusFromStripeSubscription(stripeStatus: string): EntitlementS
       return "canceled";
   }
 }
+
+/**
+ * Would buying `productKind` be redundant for someone holding these rows?
+ * Prevents double subscriptions / paying for Lifetime twice.
+ * Returns a reason code, or null when the purchase makes sense.
+ */
+export function redundantPurchase(
+  rows: EntitlementRow[],
+  productKind: "subscription" | "lifetime" | "credits" | "digital",
+  grants: string,
+  now = new Date(),
+): "already_subscribed" | "already_lifetime" | "already_owned" | null {
+  const active = rows.filter((r) => r.entitlementKey === grants && isRowActive(r, now));
+  if (productKind === "credits") return null;
+  if (productKind === "digital") return active.length ? "already_owned" : null;
+  const hasLifetime = active.some((r) => r.source === "purchase" && r.validUntil === null);
+  if (hasLifetime) return "already_lifetime";
+  // A live (not cancelling) subscription: switch plans in the portal instead.
+  const liveSub = active.some(
+    (r) => r.source === "subscription" && r.status !== "canceled" && !r.cancelAtPeriodEnd,
+  );
+  if (productKind === "subscription" && liveSub) return "already_subscribed";
+  return null;
+}

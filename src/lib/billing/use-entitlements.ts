@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { onAuthChanged } from "@/lib/auth/session-client";
 import { getPlanLimits, type Plan, type PlanLimits } from "./plans";
 
 export interface MeResponse {
   signedIn: boolean;
+  user: { email: string | null; name: string | null } | null;
   authConfigured: boolean;
   plan: Plan;
   limits: PlanLimits;
@@ -14,6 +16,7 @@ export interface MeResponse {
 
 const ANON: MeResponse = {
   signedIn: false,
+  user: null,
   authConfigured: false,
   plan: "free",
   limits: getPlanLimits("free"),
@@ -23,6 +26,9 @@ const ANON: MeResponse = {
 
 let inflight: Promise<MeResponse> | null = null;
 let cachedMe: MeResponse | null = null;
+let fetchedAt = 0;
+/** Re-check plan/session when a tab regains focus after this long. */
+const STALE_MS = 30_000;
 const listeners = new Set<(me: MeResponse) => void>();
 
 async function fetchMe(): Promise<MeResponse> {
@@ -36,8 +42,10 @@ async function fetchMe(): Promise<MeResponse> {
 }
 
 export function refreshEntitlements(): Promise<MeResponse> {
+  if (inflight) return inflight;
   inflight = fetchMe().then((me) => {
     cachedMe = me;
+    fetchedAt = Date.now();
     inflight = null;
     for (const l of listeners) l(me);
     return me;
@@ -57,8 +65,20 @@ export function useEntitlements(): {
     listeners.add(setData);
     if (!cachedMe && !inflight) void refreshEntitlements();
     else if (inflight) void inflight.then(setData);
+    const onFocus = () => {
+      if (document.visibilityState === "visible" && Date.now() - fetchedAt > STALE_MS) {
+        void refreshEntitlements();
+      }
+    };
+    document.addEventListener("visibilitychange", onFocus);
+    window.addEventListener("focus", onFocus);
+    // Signed in/out in another tab → refresh here too.
+    const off = onAuthChanged(() => void refreshEntitlements());
     return () => {
       listeners.delete(setData);
+      document.removeEventListener("visibilitychange", onFocus);
+      window.removeEventListener("focus", onFocus);
+      off();
     };
   }, []);
 

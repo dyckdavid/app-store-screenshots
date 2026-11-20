@@ -18,11 +18,13 @@ function notConfigured(): Response {
   );
 }
 
+let handlers: Record<string, Handler> | null = null;
+
 function forward(method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH"): Handler {
   return async (request, ctx) => {
     const auth = getAuth();
     if (!auth) return notConfigured();
-    const handlers = auth.handler() as unknown as Record<string, Handler>;
+    handlers ??= auth.handler() as unknown as Record<string, Handler>;
     const fn = handlers[method];
     if (!fn) return new Response(null, { status: 405 });
     return fn(request, ctx);

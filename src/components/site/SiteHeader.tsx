@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEntitlements } from "@/lib/billing/use-entitlements";
+import AccountMenu from "./AccountMenu";
 
 const NAV = [
   { href: "/studio", label: "Editor" },
@@ -37,13 +38,8 @@ export default function SiteHeader() {
           </Link>
         ))}
         {data?.signedIn ? (
-          <Link
-            href="/account"
-            className="ml-1 whitespace-nowrap rounded-full border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-[var(--ink)]"
-          >
-            {data.plan === "free" ? "Account" : `Account · ${data.plan === "pro" ? "Pro" : "Lifetime"}`}
-          </Link>
-        ) : (
+          <AccountMenu me={data} />
+        ) : data?.authConfigured === false ? null : (
           <Link
             href={`/sign-in?next=${encodeURIComponent(pathname || "/studio")}`}
             className="ml-1 whitespace-nowrap rounded-full bg-[var(--accent)] px-4 py-2 font-medium text-white"

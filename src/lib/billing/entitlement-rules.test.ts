@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isPastDue,
+  redundantPurchase,
   isRowActive,
   resolvePlan,
   statusFromStripeSubscription,
@@ -95,5 +96,29 @@ describe("getPlanLimits", () => {
     } finally {
       delete process.env.QUOTA_FREE_AI_PER_DAY;
     }
+  });
+});
+
+describe("redundantPurchase", () => {
+  it("blocks a second subscription but allows resubscribing after cancel", () => {
+    expect(redundantPurchase([row({})], "subscription", "asc_pro", now)).toBe("already_subscribed");
+    expect(redundantPurchase([row({ cancelAtPeriodEnd: true })], "subscription", "asc_pro", now)).toBeNull();
+    expect(redundantPurchase([row({ validUntil: past })], "subscription", "asc_pro", now)).toBeNull();
+  });
+  it("blocks anything Pro for lifetime owners", () => {
+    const life = row({ source: "purchase", validUntil: null, productKey: "asc_pro_lifetime" });
+    expect(redundantPurchase([life], "subscription", "asc_pro", now)).toBe("already_lifetime");
+    expect(redundantPurchase([life], "lifetime", "asc_pro", now)).toBe("already_lifetime");
+  });
+  it("lets subscribers upgrade to lifetime", () => {
+    expect(redundantPurchase([row({})], "lifetime", "asc_pro", now)).toBeNull();
+  });
+  it("revoked purchases don't block", () => {
+    expect(redundantPurchase([row({ source: "purchase", status: "revoked", validUntil: null })], "lifetime", "asc_pro", now)).toBeNull();
+  });
+  it("credits are always allowed; digital only once", () => {
+    expect(redundantPurchase([row({})], "credits", "asc_ai_credits", now)).toBeNull();
+    const pdf = row({ entitlementKey: "sample_plan_pdf", source: "purchase", validUntil: null });
+    expect(redundantPurchase([pdf], "digital", "sample_plan_pdf", now)).toBe("already_owned");
   });
 });

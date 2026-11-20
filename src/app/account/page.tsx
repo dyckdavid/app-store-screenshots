@@ -73,7 +73,9 @@ export default async function AccountPage({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="font-[family-name:var(--font-display)] text-3xl text-[var(--ink)]">Account</h1>
-          <p className="mt-1 text-sm text-[var(--muted)]">{user.email}</p>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            Signed in as <span className="font-medium text-[var(--ink)]">{user.email ?? user.name ?? "you"}</span>
+          </p>
         </div>
         <SignOutButton />
       </div>
@@ -162,6 +164,20 @@ export default async function AccountPage({
             ))}
           </ul>
         )}
+      </section>
+
+      <section className={card}>
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Security</p>
+        <p className="mt-2 text-sm text-[var(--muted)]">
+          Lost a device or signed in somewhere public? Sign out of every browser and device at once.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <SignOutButton />
+          <SignOutButton everywhere />
+        </div>
+        <p className="mt-3 text-xs text-[var(--muted)]">
+          To delete your account and data, contact <Link href="/support" className="underline">support</Link>.
+        </p>
       </section>
     </main>
   );
