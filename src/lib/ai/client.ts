@@ -39,12 +39,12 @@ const DISABLED_STATUS: AiStatusResponse = {
       source: "",
     },
     vision: {
-      id: "spacexai/grok-build-0.1",
+      id: "spacexai/grok-4.3",
       inputUsdPerMillionTokens: 1,
       outputUsdPerMillionTokens: 2,
       source: "",
     },
-    copy: { id: "spacexai/grok-build-0.1" },
+    copy: { id: "spacexai/grok-4.3" },
   },
   caps: {
     perIpPerMinute: 5,
@@ -111,7 +111,7 @@ export async function analyzeScreenshot(options: {
   }
   return {
     suggestions: data.suggestions,
-    model: data.model || "spacexai/grok-build-0.1",
+    model: data.model || "spacexai/grok-4.3",
   };
 }
 
@@ -165,7 +165,7 @@ export async function pickBestLayout(options: {
     layout: data.layout,
     rationale: data.rationale || "",
     confidence: data.confidence ?? 0.5,
-    model: data.model || "spacexai/grok-build-0.1",
+    model: data.model || "spacexai/grok-4.3",
   };
 }
 
@@ -191,7 +191,7 @@ export async function reviewComposition(options: {
   }
   return {
     review: data.review,
-    model: data.model || "spacexai/grok-build-0.1",
+    model: data.model || "spacexai/grok-4.3",
   };
 }
 

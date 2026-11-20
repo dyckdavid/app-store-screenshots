@@ -8,25 +8,25 @@
  *
  * Models (AI Gateway provider/model ids from https://ai-gateway.vercel.sh/v1/models):
  * - Image: spacexai/grok-imagine-image
- * - Vision / text: spacexai/grok-build-0.1
+ * - Vision / text: spacexai/grok-4.3 (vision-capable; cheaper than 4.7)
  */
 
 export const GATEWAY_IMAGE_MODEL = "spacexai/grok-imagine-image";
-export const GATEWAY_VISION_MODEL = "spacexai/grok-build-0.1";
-export const GATEWAY_COPY_MODEL = "spacexai/grok-build-0.1";
+export const GATEWAY_VISION_MODEL = "spacexai/grok-4.3";
+export const GATEWAY_COPY_MODEL = "spacexai/grok-4.3";
 
 /** Legacy direct-xAI model ids (fallback path). */
 export const XAI_API_BASE = "https://api.x.ai/v1";
 export const XAI_IMAGE_MODEL = "grok-imagine-image";
-export const XAI_VISION_MODEL = "grok-build-0.1";
+export const XAI_VISION_MODEL = "grok-4.3";
 
 export const XAI_IMAGE_PRICE_USD = 0.02;
 export const XAI_IMAGE_PRICE_SOURCE =
   "https://docs.x.ai/docs/models (Imagine Pricing) / https://docs.x.ai/docs/models/grok-imagine-image";
-export const XAI_VISION_INPUT_PER_MILLION_USD = 1.0;
-export const XAI_VISION_OUTPUT_PER_MILLION_USD = 2.0;
+export const XAI_VISION_INPUT_PER_MILLION_USD = 1.25;
+export const XAI_VISION_OUTPUT_PER_MILLION_USD = 2.5;
 export const XAI_VISION_PRICE_SOURCE =
-  "https://docs.x.ai/docs/models (Text API Pricing) / https://docs.x.ai/docs/models/grok-build-0.1";
+  "https://docs.x.ai/docs/models (Text API Pricing) / https://docs.x.ai/docs/models/grok-4.3";
 
 export const DEFAULT_PER_IP_PER_MINUTE = 5;
 export const DEFAULT_PER_IP_PER_DAY = 30;
